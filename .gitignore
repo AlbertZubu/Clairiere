@@ -25,3 +25,6 @@ build/
 # Temporary
 *.tmp
 .cache/
+
+# Données personnelles (stockage backend)
+data/store.json

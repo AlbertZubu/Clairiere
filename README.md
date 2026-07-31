@@ -111,3 +111,28 @@ MIT
 **Créé par** : AlbertZubu  
 **Plateforme** : React Web, mobile (Android prioritaire)  
 **Status** : En développement
+
+---
+
+## Déploiement (Pi)
+
+L'app tourne en permanence sur le Raspberry Pi via un service systemd, accessible depuis le réseau NordVPN Meshnet.
+
+**Accès** : `http://100.96.55.59:4000`
+
+**Stockage** : plus de dépendance à `window.storage` (Artifacts Claude.ai). Un petit backend Express (`server/server.js`) sert de couche de persistance, avec les données stockées dans `data/store.json` sur le Pi (non versionné, voir `.gitignore`).
+
+**Stack** :
+- Frontend : Vite + React (build dans `dist/`)
+- Backend : Express (sert `dist/` + API `/api/storage/*`)
+- Process manager : systemd (`clairiere.service`) — redémarre automatiquement, démarre au boot
+
+**Commandes utiles (sur le Pi)** :
+```bash
+npm run build          # build le frontend
+sudo systemctl restart clairiere   # relancer le service après un changement
+sudo systemctl status clairiere    # voir l'état
+journalctl -u clairiere -f         # voir les logs en direct
+```
+
+**⚠️ Note** : l'assistant IA (chat) et le scan Gmail utilisent encore des appels directs à l'API Anthropic depuis le navigateur — ces fonctionnalités ne marcheront pas en dehors des Artifacts Claude.ai sans un backend proxy dédié avec une vraie clé API. C'est un chantier séparé (voir roadmap du projet).

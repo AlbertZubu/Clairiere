@@ -1,36 +1,26 @@
 {
   "name": "clairiere",
-  "version": "1.0.0",
-  "description": "Application de gestion personnelle des tâches et obligations",
-  "main": "clairiere.jsx",
+  "version": "2.0.0",
+  "description": "Application de gestion personnelle des tâches et obligations — déployée sur Pi",
   "type": "module",
   "scripts": {
-    "dev": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "node server/server.js",
+    "start": "npm run build && npm run server"
   },
   "dependencies": {
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "lucide-react": "^0.294.0"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.294.0",
+    "express": "^4.19.2"
   },
   "devDependencies": {
-    "react-scripts": "5.0.1"
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "vite": "^5.4.0",
+    "@vitejs/plugin-react": "^4.3.1"
   },
   "author": "AlbertZubu",
   "license": "MIT",
-  "homepage": "https://github.com/AlbertZubu/clairiere"
+  "homepage": "https://github.com/AlbertZubu/Clairiere"
 }

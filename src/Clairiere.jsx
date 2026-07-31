@@ -365,18 +365,23 @@ const STORAGE_KEYS = {
 
 async function storageGet(key) {
   try {
-    if (!window.storage) return null;
-    const res = await window.storage.get(key, false);
-    return res ? JSON.parse(res.value) : null;
+    const res = await fetch(`/api/storage/${encodeURIComponent(key)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data ? JSON.parse(data.value) : null;
   } catch {
     return null;
   }
 }
 async function storageSet(key, value) {
   try {
-    if (!window.storage) return false;
-    await window.storage.set(key, JSON.stringify(value), false);
-    return true;
+    const res = await fetch(`/api/storage/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: JSON.stringify(value) }),
+    });
+    return res.ok;
   } catch (e) {
     console.error("save failed", key, e);
     return false;
