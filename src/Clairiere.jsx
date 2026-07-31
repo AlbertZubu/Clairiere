@@ -299,27 +299,16 @@ function dossierPct(dossier) {
 
 // ---------- AI ----------
 async function callClaude(messages, userInput) {
-  const systemPrompt = `Tu es Clairière, un assistant de gestion de tâches. L'utilisateur te donne des instructions en langage naturel.
-Actions disponibles : add_task, add_dossier, toggle_task, delete_task, delete_dossier, add_to_dossier.
-Réponds UNIQUEMENT avec du JSON, pas de texte :
-{"reply":"...(très court, 3-8 mots)","status":"ok|question|error","actions":[]}`;
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5",
-        max_tokens: 500,
-        system: systemPrompt,
-        messages: [...messages, { role: "user", content: userInput }],
-      }),
+      body: JSON.stringify({ messages, userInput }),
     });
     const data = await response.json();
-    const textContent = data.content?.find((b) => b.type === "text")?.text || "";
-    const parsed = JSON.parse(textContent.replace(/```json|```/g, "").trim());
-    return { reply: parsed.reply || "Action effectuée.", status: parsed.status || "ok", actions: parsed.actions || [] };
+    return { reply: data.reply || "Action effectuée.", status: data.status || "ok", actions: data.actions || [] };
   } catch (e) {
-    console.error("claude call failed", e);
+    console.error("chat call failed", e);
     return { reply: "Erreur de connexion.", status: "error", actions: [] };
   }
 }
