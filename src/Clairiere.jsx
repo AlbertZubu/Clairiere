@@ -8,121 +8,413 @@ import {
 } from "lucide-react";
 
 // ============================================================
-// DESIGN SYSTEM — "Clairière"
-// Une trouée de lumière en forêt : fond parchemin chaud, encre
-// vert-forêt, éclat ambré. Cartes à coins organiques (faits main).
+// DESIGN SYSTEM — 8 univers visuels
+// ------------------------------------------------------------
+// Chaque thème pilote non seulement les couleurs, mais aussi :
+// le fond de page (dégradés), la forme et l'ombre des cartes, la
+// nav, l'échelle typographique, le style des titres et labels.
+// Deux thèmes ne doivent JAMAIS se ressembler : c'est le but.
+// Tous les fonds sont clairs (préférence assumée).
 // ============================================================
-const PALETTE = {
-  canvas: "#F7F3E9",
-  canvasDeep: "#EFE7D2",
-  panel: "#FFFFFF",
-  ink: "#1F2A1E",
-  inkSoft: "#5C6B54",
-  inkFaint: "#66735E",
-  line: "#DFD5B8",
-  lineSoft: "#EAE2CC",
-  forest: "#2C4A32",
-  forestSoft: "#4B6B44",
-  amber: "#C68A3D",
-  amberSoft: "#E0B679",
-  clay: "#B5674A",
-  sky: "#4E7789",
-  sage: "#7C9473",
-  berry: "#93516A",
-  danger: "#B5453A",
-  success: "#3F7A45",
-  fontDisplay: "'Fraunces', serif",
-  fontBody: "'Public Sans', sans-serif",
-  radiusCard: "16px 8px 16px 8px",
-  radiusCardLg: "18px 8px 18px 8px",
-  radiusChip: "14px 6px 14px 6px",
-  // ---- Tokens "éléments tâches" : forme, taille, typo des labels — pilotés par thème ----
-  chipShape: "organic",          // identité visuelle du toggle Hebdo/Daily
-  chipRadius: "14px 6px 14px 6px",
-  chipSize: 34,                  // taille du bouton toggle Hebdo/Daily
-  chipBorderWidth: 1.5,
-  chipShadow: "0 2px 6px rgba(31,42,30,0.08)",
-  missionRadius: "12px 5px 12px 5px",
-  checkboxShape: "circle",       // "circle" | "square"
-  labelCase: "uppercase",        // "uppercase" | "none"
-  labelWeight: 700,
-  labelTracking: 1,
+
+// Valeurs par défaut : tout thème hérite de ça, puis surcharge.
+// (Sans base, un token oublié dans un thème garderait la valeur du thème précédent.)
+const BASE_TOKENS = {
+  // — surfaces
+  canvas: "#FFFFFF", canvasDeep: "#F2F2F2", panel: "#FFFFFF",
+  appBg: "#FFFFFF",              // fond de page complet (dégradés autorisés)
+  appOverlay: null,              // calque décoratif fixe au-dessus du fond
+  headerBg: "rgba(255,255,255,0.85)",
+  headerBlur: 10,
+  headerBorder: "1px solid rgba(0,0,0,0.07)",
+  headerShadow: "none",
+  // — encre
+  ink: "#111111", inkSoft: "#4A4A4A", inkFaint: "#7A7A7A",
+  line: "#E2E2E2", lineSoft: "#EFEFEF",
+  lineStrong: null,              // bordure des cases/chips inactifs (null → line)
+  // — accents (noms sémantiques hérités, valeurs propres à chaque thème)
+  forest: "#111111", forestSoft: "#3A3A3A",
+  amber: "#C68A3D", amberSoft: "#E0B679",
+  clay: "#B5674A", sky: "#4E7789", sage: "#7C9473", berry: "#93516A",
+  danger: "#C0392B", success: "#3F7A45",
+  onAccent: "#FFFFFF",           // texte posé sur la couleur primaire
+  accentGrad: null,              // dégradé optionnel des boutons primaires
+  glowAccent: "0 6px 16px rgba(0,0,0,0.10)",
+  // — typo
+  fontDisplay: "'Public Sans', sans-serif", fontBody: "'Public Sans', sans-serif",
+  h1Size: 26, h1Weight: 700, h1Case: "none", h1Tracking: -0.2, h1Style: "normal",
+  subSize: 12.5, subWeight: 500, subCase: "none", subTracking: 0,
+  labelCase: "uppercase", labelWeight: 700, labelTracking: 1,
+  sectionRule: "dash",           // dash | block | plain | rule | dot
+  bodyWeight: 600,
+  // — formes
+  radiusCard: "14px", radiusCardLg: "16px", radiusChip: "12px", radiusPill: "999px",
+  cardBg: null,                  // null → panel
+  cardBorderWidth: 1.5,
+  cardBorderColor: null,         // null → line
+  cardShadow: "0 1px 3px rgba(0,0,0,0.05)",
+  cardBlur: 0,
+  hoverLift: "translateY(-2px)",
+  hoverShadow: "0 8px 22px rgba(0,0,0,0.10)",
+  // — éléments tâches
+  chipRadius: "12px", chipSize: 34, chipBorderWidth: 1.5,
+  chipShadow: "0 2px 6px rgba(0,0,0,0.06)",
+  missionRadius: "12px",
+  checkboxShape: "circle",       // circle | square
+  // — navigation
+  navRadius: "999px", navActiveBg: null, navActiveColor: null,
+  navIdleColor: null, navActiveShadow: "none", navUnderline: false,
+  navPad: "7px 12px", navWeight: 600, navCase: "none", navTracking: 0,
+  // — divers
+  ringThickness: null,
+  tagline: "",
 };
 
-// ---------- Style variants (mutate PALETTE in place, re-render triggered by state bump) ----------
 const THEMES = {
+  // 1 — CLAIRIÈRE : papier chaud, encre forêt, formes organiques faites main
   clairiere: {
-    label: "Clairière", swatch: "#2C4A32",
-    canvas: "#F7F3E9", canvasDeep: "#EFE7D2", panel: "#FFFFFF",
-    ink: "#1F2A1E", inkSoft: "#5C6B54", inkFaint: "#66735E",
+    label: "Clairière", swatch: "#2C4A32", swatch2: "#C68A3D",
+    tagline: "Une trouée de lumière dans la forêt.",
+    canvas: "#F7F3E9", canvasDeep: "#EDE5D0", panel: "#FFFDF7",
+    appBg:
+      "radial-gradient(1100px 620px at 8% -12%, #FFFEF6 0%, rgba(255,254,246,0) 62%)," +
+      "radial-gradient(900px 520px at 102% 2%, #E8F0E0 0%, rgba(232,240,224,0) 58%)," +
+      "radial-gradient(700px 700px at 50% 115%, #F2EAD6 0%, rgba(242,234,214,0) 60%)," +
+      "#F7F3E9",
+    headerBg: "rgba(247,243,233,0.88)", headerBorder: "1px solid #E2D9BF",
+    ink: "#1E2A1D", inkSoft: "#556349", inkFaint: "#7A8471",
     line: "#DFD5B8", lineSoft: "#EAE2CC",
     forest: "#2C4A32", forestSoft: "#4B6B44",
     amber: "#C68A3D", amberSoft: "#E0B679",
     clay: "#B5674A", sky: "#4E7789", sage: "#7C9473", berry: "#93516A",
     danger: "#B5453A", success: "#3F7A45",
-    fontDisplay: "'Fraunces', serif", fontBody: "'Public Sans', sans-serif",
-    radiusCard: "16px 8px 16px 8px", radiusCardLg: "18px 8px 18px 8px", radiusChip: "14px 6px 14px 6px",
-    chipShape: "organic", chipRadius: "14px 6px 14px 6px", chipSize: 34, chipBorderWidth: 1.5,
-    chipShadow: "0 2px 6px rgba(31,42,30,0.08)", missionRadius: "12px 5px 12px 5px",
-    checkboxShape: "circle", labelCase: "uppercase", labelWeight: 700, labelTracking: 1,
+    glowAccent: "0 8px 20px rgba(44,74,50,0.20)",
+    fontDisplay: "'Fraunces', Georgia, serif", fontBody: "'Public Sans', sans-serif",
+    h1Size: 27, h1Weight: 600, h1Tracking: -0.2,
+    labelCase: "uppercase", labelWeight: 700, labelTracking: 1.1, sectionRule: "dash",
+    radiusCard: "18px 7px 18px 7px", radiusCardLg: "22px 9px 22px 9px", radiusChip: "14px 6px 14px 6px",
+    cardBorderWidth: 1.5, cardShadow: "0 2px 10px rgba(46,60,40,0.05)",
+    hoverShadow: "0 10px 26px rgba(46,60,40,0.12)",
+    chipRadius: "14px 6px 14px 6px", chipSize: 34, chipBorderWidth: 1.5,
+    chipShadow: "0 2px 6px rgba(31,42,30,0.08)", missionRadius: "13px 5px 13px 5px",
+    checkboxShape: "circle",
   },
-  nike: {
-    label: "Nike", swatch: "#111111",
-    canvas: "#FFFFFF", canvasDeep: "#F2F2F2", panel: "#FFFFFF",
-    ink: "#111111", inkSoft: "#4B4B4D", inkFaint: "#707072",
-    line: "#CACACB", lineSoft: "#E5E5E5",
-    forest: "#111111", forestSoft: "#39393B",
-    amber: "#D30005", amberSoft: "#FF4D4F",
-    clay: "#D30005", sky: "#111111", sage: "#4B4B4D", berry: "#D30005",
-    danger: "#D30005", success: "#007D48",
-    fontDisplay: "'Archivo', 'Helvetica Neue', Arial, sans-serif", fontBody: "'Archivo', 'Helvetica Neue', Arial, sans-serif",
-    radiusCard: "2px", radiusCardLg: "2px", radiusChip: "2px",
-    chipShape: "square", chipRadius: "2px", chipSize: 32, chipBorderWidth: 2.5,
-    chipShadow: "3px 3px 0 rgba(17,17,17,1)", missionRadius: "2px",
-    checkboxShape: "square", labelCase: "uppercase", labelWeight: 800, labelTracking: 1.6,
+
+  // 2 — ÉLAN : brutalisme sportif, noir/rouge, angles nets, ombres dures
+  elan: {
+    label: "Élan", swatch: "#111111", swatch2: "#E4002B",
+    tagline: "PAS DE JOUR SANS.",
+    canvas: "#FFFFFF", canvasDeep: "#F1F1F1", panel: "#FFFFFF",
+    appBg:
+      "linear-gradient(180deg,#FFFFFF 0%,#FFFFFF 55%,#F4F4F4 100%)",
+    appOverlay:
+      "repeating-linear-gradient(135deg, rgba(17,17,17,0.022) 0 1px, rgba(0,0,0,0) 1px 14px)",
+    headerBg: "rgba(255,255,255,0.94)", headerBorder: "2px solid #111111",
+    ink: "#0B0B0B", inkSoft: "#404040", inkFaint: "#767676",
+    line: "#111111", lineSoft: "#DCDCDC",
+    forest: "#111111", forestSoft: "#3A3A3A",
+    amber: "#E4002B", amberSoft: "#FF4E63",
+    clay: "#E4002B", sky: "#0B0B0B", sage: "#00713F", berry: "#E4002B",
+    danger: "#E4002B", success: "#00713F",
+    glowAccent: "4px 4px 0 #111111",
+    fontDisplay: "'Archivo', 'Helvetica Neue', Arial, sans-serif",
+    fontBody: "'Archivo', 'Helvetica Neue', Arial, sans-serif",
+    h1Size: 32, h1Weight: 800, h1Case: "uppercase", h1Tracking: -0.8, h1Style: "italic",
+    subCase: "uppercase", subWeight: 700, subTracking: 1.2, subSize: 11,
+    labelCase: "uppercase", labelWeight: 800, labelTracking: 1.6, sectionRule: "block",
+    bodyWeight: 700,
+    radiusCard: "0px", radiusCardLg: "0px", radiusChip: "0px", radiusPill: "0px",
+    cardBorderWidth: 2, cardBorderColor: "#111111", cardShadow: "4px 4px 0 rgba(17,17,17,0.10)",
+    hoverLift: "translate(-2px,-2px)", hoverShadow: "6px 6px 0 rgba(17,17,17,0.90)",
+    chipRadius: "0px", chipSize: 34, chipBorderWidth: 2,
+    chipShadow: "3px 3px 0 rgba(17,17,17,0.14)", missionRadius: "0px",
+    checkboxShape: "square",
+    navRadius: "0px", navCase: "uppercase", navWeight: 800, navTracking: 1.1, navPad: "8px 13px",
+    ringThickness: 5,
   },
-  apple: {
-    label: "Apple", swatch: "#0071E3",
-    canvas: "#F5F5F7", canvasDeep: "#FFFFFF", panel: "#FFFFFF",
-    ink: "#1D1D1F", inkSoft: "#6E6E73", inkFaint: "#6B6B72",
-    line: "#E0E0E0", lineSoft: "#EFEFEF",
-    forest: "#0071E3", forestSoft: "#0077ED",
-    amber: "#0071E3", amberSoft: "#42A1EC",
-    clay: "#0071E3", sky: "#0071E3", sage: "#34C759", berry: "#FF375F",
-    danger: "#FF3B30", success: "#34C759",
-    fontDisplay: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif",
-    fontBody: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif",
-    radiusCard: "14px", radiusCardLg: "16px", radiusChip: "12px",
-    chipShape: "round", chipRadius: "11px", chipSize: 36, chipBorderWidth: 1,
-    chipShadow: "0 1px 4px rgba(0,0,0,0.06)", missionRadius: "10px",
-    checkboxShape: "circle", labelCase: "none", labelWeight: 600, labelTracking: 0,
+
+  // 3 — STUDIO : minimalisme absolu, aucune bordure, ombres douces, énormes rayons
+  studio: {
+    label: "Studio", swatch: "#0071E3", swatch2: "#F5F5F7",
+    tagline: "L'essentiel, rien d'autre.",
+    canvas: "#F5F5F7", canvasDeep: "#EBEBEF", panel: "#FFFFFF",
+    appBg: "linear-gradient(180deg,#F7F7F9 0%,#F1F1F4 100%)",
+    headerBg: "rgba(247,247,249,0.78)", headerBlur: 20, headerBorder: "1px solid rgba(0,0,0,0.05)",
+    ink: "#1D1D1F", inkSoft: "#6E6E73", inkFaint: "#8E8E93",
+    line: "#E5E5EA", lineSoft: "#F0F0F3",
+    forest: "#0071E3", forestSoft: "#0A84FF",
+    amber: "#FF9F0A", amberSoft: "#FFC062",
+    clay: "#FF6B35", sky: "#0071E3", sage: "#30D158", berry: "#FF375F",
+    danger: "#FF3B30", success: "#30D158",
+    glowAccent: "0 8px 20px rgba(0,113,227,0.28)",
+    fontDisplay: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif",
+    fontBody: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif",
+    h1Size: 33, h1Weight: 700, h1Tracking: -0.9,
+    subSize: 13.5, subWeight: 400,
+    labelCase: "none", labelWeight: 600, labelTracking: 0, sectionRule: "plain",
+    radiusCard: "18px", radiusCardLg: "22px", radiusChip: "16px",
+    cardBorderWidth: 0, cardShadow: "0 1px 2px rgba(0,0,0,0.04), 0 10px 26px rgba(0,0,0,0.045)",
+    hoverLift: "translateY(-3px)", hoverShadow: "0 2px 4px rgba(0,0,0,0.05), 0 18px 40px rgba(0,0,0,0.09)",
+    chipRadius: "14px", chipSize: 38, chipBorderWidth: 0,
+    chipShadow: "0 1px 3px rgba(0,0,0,0.06), 0 6px 16px rgba(0,0,0,0.05)", missionRadius: "16px",
+    checkboxShape: "circle",
+    navRadius: "999px", navActiveShadow: "0 2px 8px rgba(0,113,227,0.30)",
+    ringThickness: 3,
   },
+
+  // 4 — CLAUDE : chaleureux, terracotta, serif Lora, formes pilules
   claude: {
-    label: "Claude", swatch: "#CC785C",
-    canvas: "#FAF9F5", canvasDeep: "#F0ECE1", panel: "#FFFFFF",
-    ink: "#141413", inkSoft: "#6C6A64", inkFaint: "#726E65",
-    line: "#E6DFD8", lineSoft: "#EFE9E0",
+    label: "Claude", swatch: "#CC785C", swatch2: "#F0ECE1",
+    tagline: "Prends ton temps, avance quand même.",
+    canvas: "#FAF9F5", canvasDeep: "#F1EDE3", panel: "#FFFFFF",
+    appBg:
+      "radial-gradient(900px 500px at 100% -8%, #F7E6DC 0%, rgba(247,230,220,0) 60%)," +
+      "radial-gradient(800px 480px at -10% 10%, #F3F1E6 0%, rgba(243,241,230,0) 58%)," +
+      "#FAF9F5",
+    headerBg: "rgba(250,249,245,0.9)", headerBorder: "1px solid #E9E1D6",
+    ink: "#141413", inkSoft: "#6C6A64", inkFaint: "#918C81",
+    line: "#E6DFD8", lineSoft: "#F1EBE3",
     forest: "#CC785C", forestSoft: "#B5674A",
-    amber: "#CC785C", amberSoft: "#E0A084",
-    clay: "#B5674A", sky: "#8A8578", sage: "#5DB872", berry: "#CC785C",
-    danger: "#C0392B", success: "#5DB872",
+    amber: "#D99A5B", amberSoft: "#EDC49A",
+    clay: "#B5674A", sky: "#7C8B9E", sage: "#6FA97E", berry: "#B0607E",
+    danger: "#C0392B", success: "#5DA971",
+    glowAccent: "0 8px 22px rgba(204,120,92,0.30)",
     fontDisplay: "'Lora', Georgia, serif", fontBody: "'Inter', sans-serif",
-    radiusCard: "8px", radiusCardLg: "10px", radiusChip: "8px",
-    chipShape: "pill", chipRadius: "999px", chipSize: 34, chipBorderWidth: 1.5,
-    chipShadow: "0 3px 10px rgba(204,120,92,0.18)", missionRadius: "999px",
-    checkboxShape: "circle", labelCase: "uppercase", labelWeight: 600, labelTracking: 0.5,
+    h1Size: 28, h1Weight: 600, h1Tracking: -0.3,
+    subSize: 13, subWeight: 400,
+    labelCase: "uppercase", labelWeight: 600, labelTracking: 0.9, sectionRule: "dot",
+    radiusCard: "14px", radiusCardLg: "18px", radiusChip: "999px",
+    cardBorderWidth: 1, cardShadow: "0 2px 8px rgba(80,60,45,0.05)",
+    hoverShadow: "0 10px 28px rgba(120,80,60,0.14)",
+    chipRadius: "999px", chipSize: 36, chipBorderWidth: 1.5,
+    chipShadow: "0 3px 10px rgba(204,120,92,0.14)", missionRadius: "20px",
+    checkboxShape: "circle",
+  },
+
+  // 5 — AURORE : verre dépoli, dégradés pastel, halos colorés
+  aurore: {
+    label: "Aurore", swatch: "#7B6CF6", swatch2: "#F79BC4",
+    tagline: "Une belle journée à faire éclore.",
+    canvas: "#FBFAFF", canvasDeep: "#F0EDFB", panel: "rgba(255,255,255,0.72)",
+    appBg:
+      "radial-gradient(760px 620px at 4% -8%, #FFE1D2 0%, rgba(255,225,210,0) 62%)," +
+      "radial-gradient(720px 560px at 98% 4%, #E2DBFF 0%, rgba(226,219,255,0) 60%)," +
+      "radial-gradient(820px 640px at 46% 108%, #D6F3E8 0%, rgba(214,243,232,0) 62%)," +
+      "radial-gradient(600px 500px at 88% 82%, #FFE7F2 0%, rgba(255,231,242,0) 60%)," +
+      "#FBFAFF",
+    headerBg: "rgba(251,250,255,0.62)", headerBlur: 18, headerBorder: "1px solid rgba(255,255,255,0.85)",
+    headerShadow: "0 6px 24px rgba(110,95,180,0.07)",
+    ink: "#241F45", inkSoft: "#5D5680", inkFaint: "#8A83A8",
+    line: "rgba(255,255,255,0.9)", lineSoft: "rgba(210,205,240,0.55)",
+    lineStrong: "rgba(140,128,196,0.42)",
+    forest: "#7B6CF6", forestSoft: "#9A8DFF",
+    amber: "#F5A65B", amberSoft: "#FFCB9A",
+    clay: "#F2836E", sky: "#57BDEA", sage: "#4CC4A0", berry: "#EB7BB5",
+    danger: "#E8607D", success: "#4CC4A0",
+    accentGrad: "linear-gradient(135deg,#7B6CF6 0%,#B57BF0 55%,#F79BC4 100%)",
+    glowAccent: "0 10px 26px rgba(123,108,246,0.34)",
+    fontDisplay: "'Outfit', sans-serif", fontBody: "'Outfit', sans-serif",
+    h1Size: 31, h1Weight: 600, h1Tracking: -0.6,
+    subSize: 13, subWeight: 400,
+    labelCase: "uppercase", labelWeight: 600, labelTracking: 1.4, sectionRule: "dot",
+    radiusCard: "22px", radiusCardLg: "26px", radiusChip: "18px",
+    cardBg: "rgba(255,255,255,0.68)", cardBorderWidth: 1, cardBorderColor: "rgba(255,255,255,0.95)",
+    cardShadow: "0 8px 30px rgba(96,84,168,0.10)", cardBlur: 16,
+    hoverLift: "translateY(-3px)", hoverShadow: "0 16px 42px rgba(96,84,168,0.18)",
+    chipRadius: "16px", chipSize: 37, chipBorderWidth: 1,
+    chipShadow: "0 5px 16px rgba(96,84,168,0.12)", missionRadius: "18px",
+    checkboxShape: "circle",
+    navRadius: "999px", navActiveShadow: "0 6px 18px rgba(123,108,246,0.35)",
+    ringThickness: 4,
+  },
+
+  // 6 — ENCRE : mise en page éditoriale, serif à grande échelle, filets fins
+  encre: {
+    label: "Encre", swatch: "#16150F", swatch2: "#A8322A",
+    tagline: "Écris ta journée comme une une.",
+    canvas: "#FCFBF6", canvasDeep: "#F3F1E8", panel: "#FFFFFE",
+    appBg:
+      "linear-gradient(180deg,#FDFCF8 0%,#F8F6EE 100%)",
+    appOverlay:
+      "repeating-linear-gradient(0deg, rgba(22,21,15,0.013) 0 1px, rgba(0,0,0,0) 1px 38px)",
+    headerBg: "rgba(252,251,246,0.93)", headerBorder: "1px solid #16150F", headerBlur: 6,
+    ink: "#16150F", inkSoft: "#4A4738", inkFaint: "#84806E",
+    line: "#DAD5C4", lineSoft: "#EAE6D9",
+    forest: "#16150F", forestSoft: "#3B382C",
+    amber: "#A8322A", amberSoft: "#D0665C",
+    clay: "#8A6A3B", sky: "#3E5A6B", sage: "#5C6B4A", berry: "#7A3B52",
+    danger: "#A8322A", success: "#4A6B42",
+    glowAccent: "0 4px 12px rgba(22,21,15,0.20)",
+    fontDisplay: "'Instrument Serif', 'Playfair Display', Georgia, serif",
+    fontBody: "'Public Sans', Georgia, serif",
+    h1Size: 40, h1Weight: 400, h1Tracking: -0.8,
+    subSize: 12, subWeight: 400, subCase: "uppercase", subTracking: 1.6,
+    labelCase: "uppercase", labelWeight: 700, labelTracking: 2, sectionRule: "rule",
+    bodyWeight: 500,
+    radiusCard: "2px", radiusCardLg: "2px", radiusChip: "2px", radiusPill: "2px",
+    cardBorderWidth: 1, cardBorderColor: "#D6D0BC", cardShadow: "none",
+    hoverLift: "none", hoverShadow: "0 6px 18px rgba(22,21,15,0.10)",
+    chipRadius: "2px", chipSize: 34, chipBorderWidth: 1,
+    chipShadow: "none", missionRadius: "2px",
+    checkboxShape: "square",
+    navRadius: "2px", navUnderline: true, navCase: "uppercase", navWeight: 700,
+    navTracking: 1.2, navPad: "7px 10px",
+    ringThickness: 2,
+  },
+
+  // 7 — POP : couleurs électriques sur blanc, cartes épaisses, ombres portées colorées
+  pop: {
+    label: "Pop", swatch: "#6E3AFF", swatch2: "#FF4D8D",
+    tagline: "Allez, on attaque !",
+    canvas: "#FFFFFF", canvasDeep: "#F3F0FF", panel: "#FFFFFF",
+    appBg:
+      "radial-gradient(680px 520px at 0% 0%, rgba(110,58,255,0.10) 0%, rgba(110,58,255,0) 60%)," +
+      "radial-gradient(620px 520px at 100% 6%, rgba(0,194,209,0.12) 0%, rgba(0,194,209,0) 58%)," +
+      "radial-gradient(700px 560px at 60% 110%, rgba(255,77,141,0.10) 0%, rgba(255,77,141,0) 60%)," +
+      "#FFFFFF",
+    headerBg: "rgba(255,255,255,0.9)", headerBorder: "2px solid #EDE7FF",
+    ink: "#15122B", inkSoft: "#4B4570", inkFaint: "#8781A8",
+    line: "#E4DEFF", lineSoft: "#F1EDFF",
+    forest: "#6E3AFF", forestSoft: "#8B5CFF",
+    amber: "#FF8A00", amberSoft: "#FFB65C",
+    clay: "#FF4D8D", sky: "#00B8CC", sage: "#3BC46B", berry: "#C93AFF",
+    danger: "#FF3D5E", success: "#3BC46B",
+    accentGrad: "linear-gradient(135deg,#6E3AFF 0%,#C93AFF 100%)",
+    glowAccent: "0 6px 0 rgba(78,32,190,0.35)",
+    fontDisplay: "'Space Grotesk', sans-serif", fontBody: "'Space Grotesk', sans-serif",
+    h1Size: 31, h1Weight: 700, h1Tracking: -1,
+    subSize: 12.5, subWeight: 500,
+    labelCase: "uppercase", labelWeight: 700, labelTracking: 1.3, sectionRule: "block",
+    bodyWeight: 600,
+    radiusCard: "20px", radiusCardLg: "24px", radiusChip: "16px",
+    cardBorderWidth: 2, cardBorderColor: "#E4DEFF",
+    cardShadow: "0 4px 0 rgba(110,58,255,0.13)",
+    hoverLift: "translateY(-3px)", hoverShadow: "0 8px 0 rgba(110,58,255,0.22)",
+    chipRadius: "15px", chipSize: 38, chipBorderWidth: 2,
+    chipShadow: "0 3px 0 rgba(110,58,255,0.14)", missionRadius: "16px",
+    checkboxShape: "circle",
+    navRadius: "14px", navActiveShadow: "0 3px 0 rgba(78,32,190,0.40)", navWeight: 700,
+    ringThickness: 5,
+  },
+
+  // 8 — SUMI : japandi, papier de riz, trait fin, un seul rouge vermillon
+  sumi: {
+    label: "Sumi", swatch: "#26241E", swatch2: "#C4552F",
+    tagline: "Un geste après l'autre.",
+    canvas: "#F4F1E9", canvasDeep: "#EAE5D8", panel: "#FBF9F3",
+    appBg:
+      "radial-gradient(1000px 700px at 82% -10%, #FBF9F2 0%, rgba(251,249,242,0) 58%)," +
+      "#F4F1E9",
+    appOverlay:
+      "repeating-linear-gradient(45deg, rgba(38,36,30,0.012) 0 1px, rgba(0,0,0,0) 1px 7px)",
+    headerBg: "rgba(244,241,233,0.9)", headerBorder: "1px solid #DFD9C9",
+    ink: "#26241E", inkSoft: "#5C584C", inkFaint: "#918B7B",
+    line: "#DCD6C6", lineSoft: "#E9E4D7",
+    forest: "#26241E", forestSoft: "#4A463C",
+    amber: "#C4552F", amberSoft: "#DE8A6C",
+    clay: "#9A6B3F", sky: "#4A6272", sage: "#77836A", berry: "#8C5A66",
+    danger: "#B03A28", success: "#5E7A55",
+    glowAccent: "0 6px 16px rgba(38,36,30,0.16)",
+    fontDisplay: "'Cormorant Garamond', Georgia, serif", fontBody: "'Public Sans', sans-serif",
+    h1Size: 36, h1Weight: 500, h1Tracking: 0.5,
+    subSize: 12, subWeight: 400, subTracking: 0.6,
+    labelCase: "uppercase", labelWeight: 500, labelTracking: 2.6, sectionRule: "plain",
+    bodyWeight: 500,
+    radiusCard: "3px", radiusCardLg: "3px", radiusChip: "3px", radiusPill: "3px",
+    cardBorderWidth: 1, cardBorderColor: "#DFD9C9", cardShadow: "none",
+    hoverLift: "none", hoverShadow: "0 3px 14px rgba(38,36,30,0.09)",
+    chipRadius: "3px", chipSize: 36, chipBorderWidth: 1,
+    chipShadow: "none", missionRadius: "3px",
+    checkboxShape: "square",
+    navRadius: "3px", navPad: "7px 11px", navWeight: 600, navTracking: 0.6,
+    ringThickness: 2,
   },
 };
+
+// Anciens identifiants de thème encore stockés côté serveur → nouveaux équivalents
+const LEGACY_THEME_IDS = { nike: "elan", apple: "studio" };
+
+// PALETTE = thème courant, muté en place (les composants la lisent au render).
+const PALETTE = { ...BASE_TOKENS, ...THEMES.clairiere };
 
 function applyTheme(id) {
   const t = THEMES[id];
   if (!t) return;
-  Object.assign(PALETTE, t);
+  Object.assign(PALETTE, BASE_TOKENS, t);
 }
 
-const DOSSIER_COLORS = [PALETTE.amber, PALETTE.clay, PALETTE.sky, PALETTE.sage, PALETTE.berry, PALETTE.forestSoft];
+// ---------- Helpers de style dérivés du thème ----------
+function ctrlLine() {
+  return PALETTE.lineStrong || PALETTE.line;
+}
+
+function cardBorder(colorOverride) {
+  const w = PALETTE.cardBorderWidth;
+  if (!w) return "none";
+  return `${w}px solid ${colorOverride || PALETTE.cardBorderColor || PALETTE.line}`;
+}
+
+// Style de carte unique — tous les panneaux de l'app passent par là.
+function cardStyle(extra = {}) {
+  return {
+    background: PALETTE.cardBg || PALETTE.panel,
+    border: cardBorder(extra.borderColor),
+    borderRadius: PALETTE.radiusCard,
+    boxShadow: PALETTE.cardShadow,
+    backdropFilter: PALETTE.cardBlur ? `blur(${PALETTE.cardBlur}px)` : undefined,
+    WebkitBackdropFilter: PALETTE.cardBlur ? `blur(${PALETTE.cardBlur}px)` : undefined,
+    ...extra,
+    borderColor: undefined,
+  };
+}
+
+// Fond des boutons/éléments primaires : dégradé si le thème en définit un.
+function accentFill() {
+  return PALETTE.accentGrad || PALETTE.forest;
+}
+
+function titleStyle(extra = {}) {
+  return {
+    fontFamily: PALETTE.fontDisplay, fontSize: PALETTE.h1Size, fontWeight: PALETTE.h1Weight,
+    fontStyle: PALETTE.h1Style, textTransform: PALETTE.h1Case, letterSpacing: PALETTE.h1Tracking,
+    color: PALETTE.ink, margin: 0, lineHeight: 1.12, ...extra,
+  };
+}
+
+function subtitleStyle(extra = {}) {
+  return {
+    fontSize: PALETTE.subSize, fontWeight: PALETTE.subWeight, textTransform: PALETTE.subCase,
+    letterSpacing: PALETTE.subTracking, color: PALETTE.inkFaint, margin: "5px 0 0", ...extra,
+  };
+}
+
+// En-tête de page commun — la personnalité du thème s'exprime ici.
+function PageHeader({ title, subtitle, icon: Icon, color, action }) {
+  const accent = color || PALETTE.forest;
+  return (
+    <div className="cl-rise" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+        {PALETTE.sectionRule === "plain" && !Icon && (
+          <span style={{ width: 3, height: PALETTE.h1Size * 1.05, background: accent, flexShrink: 0, borderRadius: 2 }} />
+        )}
+        {Icon && <IconBadge icon={Icon} color={accent} size={42} />}
+        <div style={{ minWidth: 0 }}>
+          <h1 style={titleStyle()}>{title}</h1>
+          {subtitle && <p style={subtitleStyle()}>{subtitle}</p>}
+        </div>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+// Palette d'accents cyclique — recalculée à chaque appel pour suivre le thème actif.
+function accentCycle() {
+  return [PALETTE.amber, PALETTE.sky, PALETTE.berry, PALETTE.sage, PALETTE.clay, PALETTE.forestSoft];
+}
 function colorForIndex(i) {
-  return DOSSIER_COLORS[i % DOSSIER_COLORS.length];
+  const c = accentCycle();
+  return c[i % c.length];
 }
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -264,14 +556,25 @@ function useFonts() {
     const link = document.createElement("link");
     link.id = id;
     link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700;800&family=Archivo:wght@500;600;700;800&family=Lora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap";
+    link.href =
+      "https://fonts.googleapis.com/css2" +
+      "?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700" +
+      "&family=Public+Sans:wght@400;500;600;700;800" +
+      "&family=Archivo:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800" +
+      "&family=Lora:wght@400;500;600;700" +
+      "&family=Inter:wght@400;500;600;700" +
+      "&family=Outfit:wght@300;400;500;600;700" +
+      "&family=Space+Grotesk:wght@400;500;600;700" +
+      "&family=Instrument+Serif:ital@0;1" +
+      "&family=Cormorant+Garamond:wght@300;400;500;600;700" +
+      "&display=swap";
     document.head.appendChild(link);
   }, []);
 }
 
 // ---------- Progress ring (cerne d'arbre) ----------
 function ProgressRing({ pct, color, size = 34, thickness }) {
-  const stroke = thickness || Math.max(3, size * 0.13);
+  const stroke = thickness || PALETTE.ringThickness || Math.max(3, size * 0.13);
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const offset = c - (pct / 100) * c;
@@ -280,7 +583,7 @@ function ProgressRing({ pct, color, size = 34, thickness }) {
       <circle cx={size / 2} cy={size / 2} r={r} stroke={PALETTE.lineSoft} strokeWidth={stroke} fill="none" />
       <circle
         cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={stroke} fill="none"
-        strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round" opacity={pct > 0 ? 1 : 0}
         style={{ transition: "stroke-dashoffset 0.5s cubic-bezier(.4,0,.2,1)" }}
       />
     </svg>
@@ -393,22 +696,25 @@ function getIcon(name) {
 // ============================================================
 function PillButton({ children, onClick, variant = "ghost", icon: Icon, disabled, style }) {
   const variants = {
-    primary: { background: PALETTE.forest, color: "#fff" },
-    amber: { background: PALETTE.amber, color: "#fff" },
-    ghost: { background: PALETTE.canvasDeep, color: PALETTE.inkSoft },
+    primary: { background: accentFill(), color: PALETTE.onAccent, boxShadow: PALETTE.glowAccent },
+    amber: { background: PALETTE.amber, color: PALETTE.onAccent, boxShadow: PALETTE.glowAccent },
+    ghost: { background: PALETTE.canvasDeep, color: PALETTE.inkSoft, border: PALETTE.cardBorderWidth >= 2 ? cardBorder() : "none" },
     danger: { background: PALETTE.danger, color: "#fff" },
     dangerGhost: { background: `${PALETTE.danger}14`, color: PALETTE.danger },
   };
   return (
     <button
+      className="cl-press"
       onClick={onClick}
       disabled={disabled}
       style={{
-        ...variants[variant], padding: "7px 12px", fontSize: 12, fontWeight: 600,
-        borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 6,
+        ...variants[variant], padding: PALETTE.navPad, fontSize: 12,
+        fontWeight: variant === "ghost" ? 600 : PALETTE.navWeight,
+        textTransform: PALETTE.navCase, letterSpacing: PALETTE.navTracking,
+        borderRadius: PALETTE.radiusPill, display: "inline-flex", alignItems: "center", gap: 6,
         cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1,
         fontFamily: PALETTE.fontBody, whiteSpace: "nowrap",
-        transition: "all 0.15s ease", ...style,
+        transition: "all 0.18s cubic-bezier(.34,1.4,.64,1)", ...style,
       }}
     >
       {Icon && <Icon size={13} />}
@@ -417,24 +723,27 @@ function PillButton({ children, onClick, variant = "ghost", icon: Icon, disabled
   );
 }
 
-// Bouton icône circulaire — un seul standard réutilisé partout (34px, cible tactile confortable)
+// Bouton icône — la rondeur suit le thème (cercle partout sauf thèmes anguleux)
 function IconButton({ icon: Icon, onClick, variant = "ghost", size = 34, iconSize = 15, title, color, style, disabled }) {
   const variants = {
     ghost: { background: PALETTE.canvasDeep, color: PALETTE.inkSoft },
-    primary: { background: PALETTE.forest, color: "#fff" },
-    amber: { background: PALETTE.amber, color: "#fff" },
-    subtle: { background: "transparent", color: PALETTE.inkSoft },
+    primary: { background: accentFill(), color: PALETTE.onAccent, boxShadow: PALETTE.glowAccent },
+    amber: { background: PALETTE.amber, color: PALETTE.onAccent },
+    subtle: { background: "transparent", color: PALETTE.inkFaint },
   };
+  const angular = PALETTE.radiusPill !== "999px";
   const iconColor = color || variants[variant].color;
   return (
     <button
+      className="cl-press"
       onClick={onClick}
       disabled={disabled}
       title={title}
       style={{
-        ...variants[variant], width: size, height: size, borderRadius: "50%",
+        ...variants[variant], width: size, height: size,
+        borderRadius: angular ? PALETTE.radiusChip : "50%",
         display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0, transition: "all 0.15s ease", ...style,
+        flexShrink: 0, transition: "all 0.18s cubic-bezier(.34,1.4,.64,1)", ...style,
       }}
     >
       <Icon size={iconSize} color={iconColor} />
@@ -442,78 +751,235 @@ function IconButton({ icon: Icon, onClick, variant = "ghost", size = 34, iconSiz
   );
 }
 
-function SectionLabel({ children }) {
+// Label de section — 5 traitements possibles selon le thème
+function SectionLabel({ children, color }) {
+  const kind = PALETTE.sectionRule;
+  const base = {
+    fontSize: 11, fontWeight: PALETTE.labelWeight, letterSpacing: PALETTE.labelTracking,
+    textTransform: PALETTE.labelCase, marginBottom: 11,
+  };
+  const accent = color || PALETTE.forest;
+
+  if (kind === "block") {
+    return (
+      <div style={{ marginBottom: 11 }}>
+        <span style={{
+          ...base, marginBottom: 0, display: "inline-block", background: accent, color: PALETTE.onAccent,
+          padding: "4px 10px", borderRadius: PALETTE.radiusPill === "999px" ? 999 : PALETTE.radiusChip,
+        }}>{children}</span>
+      </div>
+    );
+  }
+  if (kind === "rule") {
+    return (
+      <div style={{ ...base, color: PALETTE.ink, display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${PALETTE.ink}`, paddingBottom: 5 }}>
+        {children}
+      </div>
+    );
+  }
+  if (kind === "dot") {
+    return (
+      <div style={{ ...base, color: PALETTE.inkSoft, display: "flex", alignItems: "center", gap: 7 }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: accent, display: "inline-block" }} />
+        {children}
+      </div>
+    );
+  }
+  if (kind === "plain") {
+    return <div style={{ ...base, color: PALETTE.inkSoft, fontSize: 12.5 }}>{children}</div>;
+  }
   return (
-    <div style={{
-      fontSize: 11, fontWeight: PALETTE.labelWeight, letterSpacing: PALETTE.labelTracking, color: PALETTE.inkFaint,
-      textTransform: PALETTE.labelCase, marginBottom: 10, display: "flex", alignItems: "center", gap: 6,
-    }}>
+    <div style={{ ...base, color: PALETTE.inkFaint, display: "flex", alignItems: "center", gap: 6 }}>
       <span style={{ width: 14, height: 1.5, background: PALETTE.line, display: "inline-block" }} />
       {children}
     </div>
   );
 }
 
-// ---------- Refonte "page Tâches" — scoped à cette page uniquement, 3 thèmes seulement ----------
-// Claude n'a volontairement pas d'entrée ici : sa page Tâches reste inchangée (pas de rebrand demandé).
-const TASK_PAGE_REBRAND = {
-  clairiere: (P) => ({
-    wrapBg: `radial-gradient(120% 140% at 12% -25%, #FFFDF3 0%, transparent 55%), ${P.canvasDeep}`,
-    wrapRadius: "20px 8px 20px 8px", wrapMargin: "-14px -14px 18px", wrapPadding: "22px 18px 20px",
-    headingText: "La clairière du jour", headingColor: P.ink, headingSize: 21, headingWeight: 600,
-    headingCase: "none", headingTracking: 0.2,
-    subText: "Ce qui pousse, ce qui attend, ce qui est fait.", subColor: P.inkSoft,
-    labelVariant: "standard",
-  }),
-  nike: (P) => ({
-    wrapBg: "#111111",
-    wrapRadius: "2px", wrapMargin: "-14px -14px 18px", wrapPadding: "24px 18px 22px",
-    headingText: "TÂCHES DU JOUR", headingColor: "#FFFFFF", headingSize: 25, headingWeight: 800,
-    headingCase: "uppercase", headingTracking: 1.4,
-    subText: "NO DAYS OFF", subColor: P.amber,
-    labelVariant: "block",
-  }),
-  apple: (P) => ({
-    wrapBg: "transparent",
-    wrapRadius: 0, wrapMargin: "0 0 20px", wrapPadding: "4px 0 0",
-    headingText: "Aujourd'hui", headingColor: P.ink, headingSize: 28, headingWeight: 700,
-    headingCase: "none", headingTracking: -0.3,
-    subText: null, subColor: P.inkFaint,
-    labelVariant: "minimal",
-  }),
+// ---------- Bandeau d'accueil — la signature visuelle la plus forte de chaque thème ----------
+const HERO = {
+  clairiere: { kind: "soft", title: "La clairière du jour", sub: "Ce qui pousse, ce qui attend, ce qui est fait." },
+  elan: { kind: "slab", title: "Aujourd'hui", sub: "Pas de jour sans." },
+  studio: { kind: "plain", title: "Aujourd'hui", sub: "Une chose à la fois." },
+  claude: { kind: "soft", title: "Aujourd'hui", sub: "Prends ton temps, avance quand même." },
+  aurore: { kind: "gradient", title: "Ta journée", sub: "Il n'y a qu'à commencer." },
+  encre: { kind: "ruled", title: "Le journal du jour", sub: "Édition personnelle" },
+  pop: { kind: "pop", title: "On y va !", sub: "Trois clics et c'est lancé." },
+  sumi: { kind: "zen", title: "Aujourd'hui", sub: "Un geste après l'autre." },
 };
 
-// Label de section utilisé DANS la page Tâches — variante selon le rebrand actif, sinon SectionLabel standard
-function TaskSectionLabel({ children, variant }) {
-  if (variant === "block") {
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 6) return "Belle nuit";
+  if (h < 12) return "Bonjour";
+  if (h < 18) return "Bel après-midi";
+  return "Bonne soirée";
+}
+
+function todayLabel() {
+  return new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+}
+
+// Phrase d'encouragement — dépend uniquement de l'avancement, jamais culpabilisante
+function pepTalk(pct, total) {
+  if (!total) return "Rien de prévu : le terrain est libre.";
+  if (pct === 100) return "Tout est fait. Journée pleine.";
+  if (pct >= 75) return "Dernière ligne droite.";
+  if (pct >= 40) return "Bien lancé, ça avance.";
+  if (pct > 0) return "Le plus dur est derrière : c'est commencé.";
+  return "Une seule case à cocher pour démarrer.";
+}
+
+function HeroBanner({ viewKey, done, total }) {
+  const h = HERO[viewKey] || HERO.clairiere;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const pep = pepTalk(pct, total);
+
+  const Ring = (
+    <div style={{ position: "relative", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <ProgressRing pct={pct} color={h.kind === "slab" ? PALETTE.amber : PALETTE.forest} size={58} />
+      <span style={{
+        position: "absolute", fontSize: 13, fontWeight: 700, fontFamily: PALETTE.fontBody,
+        color: h.kind === "slab" ? "#FFFFFF" : PALETTE.ink,
+      }}>{pct}%</span>
+    </div>
+  );
+
+  // — bandeau plein, noir, angles vifs
+  if (h.kind === "slab") {
     return (
-      <div style={{
-        display: "inline-block", background: PALETTE.danger, color: "#fff",
-        fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase",
-        padding: "4px 10px", marginBottom: 10,
+      <div className="cl-rise" style={{
+        background: PALETTE.ink, margin: "-14px -14px 20px", padding: "24px 18px 22px",
+        display: "flex", alignItems: "center", gap: 16,
+        borderBottom: `6px solid ${PALETTE.amber}`,
       }}>
-        {children}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 2, color: PALETTE.amber, textTransform: "uppercase" }}>{todayLabel()}</div>
+          <div style={{ ...titleStyle(), color: "#FFFFFF", marginTop: 6 }}>{h.title}</div>
+          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: "#FFFFFF", opacity: 0.72, marginTop: 8 }}>{pep}</div>
+        </div>
+        {Ring}
       </div>
     );
   }
-  if (variant === "minimal") {
+
+  // — carte en verre dégradé
+  if (h.kind === "gradient") {
     return (
-      <div style={{ fontSize: 13, fontWeight: 600, color: PALETTE.inkFaint, marginBottom: 10 }}>
-        {children}
+      <div className="cl-rise" style={{
+        background: PALETTE.accentGrad, borderRadius: PALETTE.radiusCardLg,
+        margin: "0 0 20px", padding: "22px 20px", color: "#FFFFFF",
+        boxShadow: PALETTE.glowAccent, display: "flex", alignItems: "center", gap: 16,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 500, letterSpacing: 1.2, textTransform: "uppercase", opacity: 0.85 }}>{greeting()} · {todayLabel()}</div>
+          <div style={{ ...titleStyle(), color: "#FFFFFF", marginTop: 6 }}>{h.title}</div>
+          <div style={{ fontSize: 13, marginTop: 7, opacity: 0.92 }}>{pep}</div>
+        </div>
+        <div style={{ position: "relative", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <ProgressRing pct={pct} color="#FFFFFF" size={58} />
+          <span style={{ position: "absolute", fontSize: 13, fontWeight: 600, color: "#FFFFFF" }}>{pct}%</span>
+        </div>
       </div>
     );
   }
-  return <SectionLabel>{children}</SectionLabel>;
+
+  // — bloc coloré épais, style sticker
+  if (h.kind === "pop") {
+    return (
+      <div className="cl-rise" style={{
+        background: PALETTE.canvasDeep, border: `2px solid ${PALETTE.forest}`,
+        borderRadius: PALETTE.radiusCardLg, boxShadow: `0 6px 0 ${PALETTE.forest}`,
+        margin: "0 0 22px", padding: "20px 18px", display: "flex", alignItems: "center", gap: 16,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.3, textTransform: "uppercase", color: PALETTE.berry }}>{todayLabel()}</div>
+          <div style={{ ...titleStyle(), marginTop: 5 }}>{h.title}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: PALETTE.inkSoft, marginTop: 6 }}>{pep}</div>
+        </div>
+        {Ring}
+      </div>
+    );
+  }
+
+  // — filets typographiques, mise en page de journal
+  if (h.kind === "ruled") {
+    return (
+      <div className="cl-rise" style={{ margin: "0 0 22px", borderTop: `2px solid ${PALETTE.ink}`, borderBottom: `1px solid ${PALETTE.line}`, padding: "12px 0 14px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", color: PALETTE.inkFaint }}>
+          <span>{h.sub}</span><span>{todayLabel()}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 16, marginTop: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={titleStyle()}>{h.title}</div>
+            <div style={{ fontSize: 13, fontStyle: "italic", color: PALETTE.inkSoft, marginTop: 6 }}>{pep}</div>
+          </div>
+          {Ring}
+        </div>
+      </div>
+    );
+  }
+
+  // — zen : beaucoup d'air, un trait vertical vermillon
+  if (h.kind === "zen") {
+    return (
+      <div className="cl-rise" style={{ margin: "6px 0 30px", display: "flex", alignItems: "center", gap: 18 }}>
+        <span style={{ width: 2, alignSelf: "stretch", background: PALETTE.amber, flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, letterSpacing: 3, textTransform: "uppercase", color: PALETTE.inkFaint }}>{todayLabel()}</div>
+          <div style={{ ...titleStyle(), marginTop: 8 }}>{h.title}</div>
+          <div style={{ fontSize: 12.5, color: PALETTE.inkSoft, marginTop: 8, letterSpacing: 0.4 }}>{pep}</div>
+        </div>
+        {Ring}
+      </div>
+    );
+  }
+
+  // — plain : titre seul, aucune boîte (Studio)
+  if (h.kind === "plain") {
+    return (
+      <div className="cl-rise" style={{ margin: "0 0 22px", display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: PALETTE.inkFaint }}>{greeting()}</div>
+          <div style={{ ...titleStyle(), marginTop: 2 }}>{h.title}</div>
+          <div style={{ fontSize: 13.5, color: PALETTE.inkSoft, marginTop: 6 }}>{pep}</div>
+        </div>
+        {Ring}
+      </div>
+    );
+  }
+
+  // — soft : carte douce teintée (Clairière, Claude)
+  return (
+    <div className="cl-rise" style={{
+      background: `linear-gradient(135deg, ${PALETTE.forest}12 0%, ${PALETTE.amber}10 100%), ${PALETTE.panel}`,
+      border: cardBorder(), borderRadius: PALETTE.radiusCardLg, boxShadow: PALETTE.cardShadow,
+      margin: "0 0 20px", padding: "20px 18px", display: "flex", alignItems: "center", gap: 16,
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: PALETTE.labelWeight, letterSpacing: PALETTE.labelTracking, textTransform: "uppercase", color: PALETTE.inkFaint }}>
+          {greeting()} · {todayLabel()}
+        </div>
+        <div style={{ ...titleStyle(), marginTop: 7 }}>{h.title}</div>
+        <div style={{ fontSize: 13, color: PALETTE.inkSoft, marginTop: 7 }}>{pep}</div>
+      </div>
+      {Ring}
+    </div>
+  );
 }
 
 function EmptyState({ icon: Icon = Trees, title, subtitle }) {
   return (
-    <div style={{
-      textAlign: "center", padding: "40px 20px", color: PALETTE.inkFaint,
-    }}>
-      <Icon size={30} color={PALETTE.line} style={{ marginBottom: 10 }} />
-      <div style={{ fontSize: 13.5, fontWeight: 600, color: PALETTE.inkSoft }}>{title}</div>
-      {subtitle && <div style={{ fontSize: 12, marginTop: 4 }}>{subtitle}</div>}
+    <div style={{ textAlign: "center", padding: "46px 20px", color: PALETTE.inkFaint }}>
+      <span style={{
+        width: 58, height: 58, display: "inline-flex", alignItems: "center", justifyContent: "center",
+        borderRadius: PALETTE.radiusPill === "999px" ? "50%" : PALETTE.radiusChip,
+        background: `${PALETTE.forest}0E`, marginBottom: 14,
+      }}>
+        <Icon size={26} color={PALETTE.forest} strokeWidth={1.8} />
+      </span>
+      <div style={{ fontFamily: PALETTE.fontDisplay, fontSize: 16, fontWeight: 600, color: PALETTE.ink }}>{title}</div>
+      {subtitle && <div style={{ fontSize: 12.5, marginTop: 6, color: PALETTE.inkFaint }}>{subtitle}</div>}
     </div>
   );
 }
@@ -521,7 +987,7 @@ function EmptyState({ icon: Icon = Trees, title, subtitle }) {
 function DragHandle({ onPointerDown }) {
   return (
     <span onPointerDown={onPointerDown} style={{ touchAction: "none", cursor: "grab", padding: 4, display: "flex", alignItems: "center", flexShrink: 0 }}>
-      <GripVertical size={13} color={PALETTE.line} />
+      <GripVertical size={13} color={PALETTE.inkFaint} opacity={0.45} />
     </span>
   );
 }
@@ -537,7 +1003,7 @@ function ConfirmBar({ label, confirmLabel = "Confirmer", onConfirm, onCancel }) 
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 8, background: `${PALETTE.danger}10`,
-      border: `1.5px solid ${PALETTE.danger}33`, borderRadius: 12, padding: "9px 12px", marginBottom: 14,
+      border: `1.5px solid ${PALETTE.danger}33`, borderRadius: PALETTE.radiusCard, padding: "10px 12px", marginBottom: 14,
     }}>
       <AlertTriangle size={14} color={PALETTE.danger} style={{ flexShrink: 0 }} />
       <span style={{ fontSize: 12, color: PALETTE.ink, flex: 1, fontWeight: 500 }}>{label}</span>
@@ -617,24 +1083,31 @@ function SortableList({ items, keyId, onReorder, renderItem, gridStyle }) {
 function Checkbox({ done, size = 18 }) {
   const isSquare = PALETTE.checkboxShape === "square";
   return (
-    <span style={{
-      width: size, height: size, borderRadius: isSquare ? size * 0.2 : "50%", flexShrink: 0,
-      border: `${isSquare ? 2 : 2}px solid ${done ? PALETTE.forest : PALETTE.line}`,
-      background: done ? PALETTE.forest : "transparent",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      transition: "all 0.15s ease",
-    }}>
-      {done && <Check size={size * 0.62} color="#fff" strokeWidth={3} />}
+    <span
+      className={done ? "cl-checked" : undefined}
+      style={{
+        width: size, height: size, borderRadius: isSquare ? Math.max(2, size * 0.16) : "50%", flexShrink: 0,
+        border: `2px solid ${done ? PALETTE.forest : ctrlLine()}`,
+        background: done ? accentFill() : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "all 0.2s cubic-bezier(.34,1.5,.64,1)",
+      }}
+    >
+      {done && <Check size={size * 0.62} color={PALETTE.onAccent} strokeWidth={3} />}
     </span>
   );
 }
 
-// Badge icône coloré carré arrondi — ancre visuelle claire pour chaque élément
+// Badge icône coloré — sa forme suit le langage du thème (rond, carré, pilule)
 function IconBadge({ icon: Icon, color, size = 36 }) {
+  const angular = PALETTE.radiusPill !== "999px";
   return (
     <span style={{
-      width: size, height: size, borderRadius: size * 0.32, flexShrink: 0,
-      background: `${color}1c`, display: "flex", alignItems: "center", justifyContent: "center",
+      width: size, height: size, flexShrink: 0,
+      borderRadius: angular ? PALETTE.radiusChip : size * 0.34,
+      background: `${color}1c`,
+      border: PALETTE.cardBorderWidth >= 2 ? `2px solid ${color}` : "none",
+      display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       <Icon size={size * 0.5} color={color} strokeWidth={2.2} />
     </span>
@@ -643,9 +1116,10 @@ function IconBadge({ icon: Icon, color, size = 36 }) {
 
 // Barre de progression fine sous un titre
 function ProgressBar({ pct, color, height = 6 }) {
+  const r = PALETTE.radiusPill === "999px" ? 99 : 2;
   return (
-    <div style={{ height, background: PALETTE.canvasDeep, borderRadius: 99, overflow: "hidden", width: "100%" }}>
-      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 99, transition: "width 0.4s ease" }} />
+    <div style={{ height, background: PALETTE.canvasDeep, borderRadius: r, overflow: "hidden", width: "100%" }}>
+      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: r, transition: "width 0.5s cubic-bezier(.4,0,.2,1)" }} />
     </div>
   );
 }
@@ -653,18 +1127,18 @@ function ProgressBar({ pct, color, height = 6 }) {
 function SimpleTaskCard({ item, onToggle, onDelete, onDragStart }) {
   return (
     <div
-      style={{
-        background: PALETTE.panel, border: `1.5px solid ${PALETTE.line}`,
-        borderRadius: 14, padding: "12px 10px 12px 8px", cursor: "pointer",
+      className="cl-card"
+      style={cardStyle({
+        padding: "12px 10px 12px 8px", cursor: "pointer",
         display: "flex", alignItems: "center", gap: 10, minHeight: 54,
-        transition: "border-color 0.15s ease",
-      }}
+        opacity: item.done ? 0.72 : 1,
+      })}
       onClick={() => onToggle(item.id)}
     >
       <DragHandle onPointerDown={onDragStart} />
       <Checkbox done={item.done} size={21} />
       <span style={{
-        fontSize: 14.5, fontWeight: 600, color: item.done ? PALETTE.inkFaint : PALETTE.ink,
+        fontSize: 14.5, fontWeight: PALETTE.bodyWeight, color: item.done ? PALETTE.inkFaint : PALETTE.ink,
         textDecoration: item.done ? "line-through" : "none", wordBreak: "break-word", lineHeight: 1.3, flex: 1,
       }}>
         {item.title}
@@ -680,13 +1154,15 @@ function MissionChip({ item, onToggle, onDelete, onDragStart }) {
     <div
       onPointerDown={onDragStart}
       onClick={() => onToggle(item.id)}
+      className="cl-tap"
       style={{
-        position: "relative", background: item.done ? `${PALETTE.forest}12` : PALETTE.panel,
-        border: `${PALETTE.chipBorderWidth}px solid ${item.done ? PALETTE.forest : PALETTE.line}`,
-        borderRadius: PALETTE.missionRadius, padding: "7px 6px", cursor: "pointer",
-        display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-        minHeight: 48, boxShadow: item.done ? "none" : PALETTE.chipShadow,
-        transition: "all 0.15s ease",
+        position: "relative", background: item.done ? `${PALETTE.forest}12` : (PALETTE.cardBg || PALETTE.panel),
+        border: PALETTE.chipBorderWidth ? `${PALETTE.chipBorderWidth}px solid ${item.done ? PALETTE.forest : ctrlLine()}` : "none",
+        borderRadius: PALETTE.missionRadius, padding: "12px 8px", cursor: "pointer",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 7,
+        minHeight: 74, boxShadow: item.done ? "none" : PALETTE.chipShadow,
+        backdropFilter: PALETTE.cardBlur ? `blur(${PALETTE.cardBlur}px)` : undefined,
+        transition: "all 0.18s cubic-bezier(.34,1.4,.64,1)",
       }}
     >
       <button
@@ -699,15 +1175,15 @@ function MissionChip({ item, onToggle, onDelete, onDragStart }) {
         title="Supprimer"
       >
         <span style={{
-          width: 15, height: 15, borderRadius: squareCheckbox ? 3 : "50%", background: PALETTE.danger,
-          border: `1.5px solid ${PALETTE.canvas}`, display: "flex", alignItems: "center", justifyContent: "center",
+          width: 16, height: 16, borderRadius: squareCheckbox ? 3 : "50%", background: PALETTE.canvasDeep,
+          border: `1px solid ${PALETTE.line}`, display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          <X size={9} color="#fff" strokeWidth={3} />
+          <X size={10} color={PALETTE.inkFaint} strokeWidth={3} />
         </span>
       </button>
-      <Checkbox done={item.done} size={13} />
+      <Checkbox done={item.done} size={19} />
       <span style={{
-        fontSize: 9.5, fontWeight: 600, color: item.done ? PALETTE.inkFaint : PALETTE.ink,
+        fontSize: 11.5, fontWeight: PALETTE.bodyWeight, color: item.done ? PALETTE.inkFaint : PALETTE.ink,
         textDecoration: item.done ? "line-through" : "none", textAlign: "center",
         lineHeight: 1.2, wordBreak: "break-word", display: "-webkit-box",
         WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
@@ -721,16 +1197,17 @@ function MissionChip({ item, onToggle, onDelete, onDragStart }) {
 // Chip toggle réutilisé par Hebdo et Daily — forme/taille/ombre pilotées par le thème actif
 function TaskChip({ done, color, icon: Icon, title, onClick }) {
   return (
-    <button onClick={onClick} title={title} style={{
-      background: done ? `${color}18` : PALETTE.panel,
-      border: `${PALETTE.chipBorderWidth}px solid ${done ? color : PALETTE.line}`,
+    <button className="cl-tap" onClick={onClick} title={title} style={{
+      background: done ? `${color}1c` : (PALETTE.cardBg || PALETTE.panel),
+      border: PALETTE.chipBorderWidth ? `${PALETTE.chipBorderWidth}px solid ${done ? color : ctrlLine()}` : "none",
       borderRadius: PALETTE.chipRadius, padding: 0, cursor: "pointer",
       display: "flex", alignItems: "center", justifyContent: "center",
       flexShrink: 0, width: PALETTE.chipSize, height: PALETTE.chipSize,
       boxShadow: done ? "none" : PALETTE.chipShadow,
-      transition: "all 0.15s ease",
+      backdropFilter: PALETTE.cardBlur ? `blur(${PALETTE.cardBlur}px)` : undefined,
+      transition: "all 0.18s cubic-bezier(.34,1.4,.64,1)",
     }}>
-      {done ? <CheckCircle2 size={15} color={color} /> : <Icon size={15} color={PALETTE.inkFaint} />}
+      {done ? <CheckCircle2 size={16} color={color} /> : <Icon size={15} color={PALETTE.inkFaint} />}
     </button>
   );
 }
@@ -741,11 +1218,11 @@ function DossierCard({ dossier, index, onOpen, onDelete, onDragStart }) {
   const taskCount = dossier.tasks.reduce((a, t) => a + (t.subtasks?.length || 1), 0);
   return (
     <div
-      style={{
-        background: PALETTE.panel, border: `1.5px solid ${PALETTE.line}`,
-        borderRadius: 16, padding: "12px 12px 12px 10px", cursor: "pointer",
+      className="cl-card"
+      style={cardStyle({
+        borderRadius: PALETTE.radiusCardLg, padding: "12px 12px 12px 10px", cursor: "pointer",
         display: "flex", flexDirection: "column", gap: 10,
-      }}
+      })}
       onClick={() => onOpen(dossier.id)}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -776,30 +1253,23 @@ function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReo
   const totalCount = state.tasks.length;
   const isEmpty = state.tasks.length === 0;
   const weekColors = weekGroupColors();
-  const rebrand = TASK_PAGE_REBRAND[themeId] ? TASK_PAGE_REBRAND[themeId](PALETTE) : null;
+
+  // Avancement global du jour : missions + hebdo + daily, c'est ce qui alimente le bandeau
+  const dayDone = totalDone
+    + weekly.groups.reduce((a, g) => a + g.tasks.filter((t) => t.done).length, 0)
+    + daily.groups.reduce((a, g) => a + g.tasks.filter((t) => t.done).length, 0);
+  const dayTotal = totalCount
+    + weekly.groups.reduce((a, g) => a + g.tasks.length, 0)
+    + daily.groups.reduce((a, g) => a + g.tasks.length, 0);
 
   return (
     <div>
-      {rebrand && (
-        <div style={{ background: rebrand.wrapBg, borderRadius: rebrand.wrapRadius, margin: rebrand.wrapMargin, padding: rebrand.wrapPadding }}>
-          <div style={{
-            fontFamily: PALETTE.fontDisplay, fontSize: rebrand.headingSize, fontWeight: rebrand.headingWeight,
-            color: rebrand.headingColor, textTransform: rebrand.headingCase, letterSpacing: rebrand.headingTracking,
-          }}>
-            {rebrand.headingText}
-          </div>
-          {rebrand.subText && (
-            <div style={{ fontSize: 11.5, fontWeight: 600, color: rebrand.subColor, marginTop: 4, letterSpacing: rebrand.headingCase === "uppercase" ? 1 : 0 }}>
-              {rebrand.subText}
-            </div>
-          )}
-        </div>
-      )}
+      <HeroBanner viewKey={themeId} done={dayDone} total={dayTotal} />
 
       {/* ---- Hebdo (toggle icônes, groupée avec petites séparations) ---- */}
-      <div style={{ marginBottom: 16 }}>
-        <TaskSectionLabel variant={rebrand?.labelVariant}>Hebdo</TaskSectionLabel>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, overflowX: "auto", padding: "2px 5px 5px 2px" }}>
+      <div style={{ marginBottom: 18 }}>
+        <SectionLabel color={PALETTE.sky}>Hebdo</SectionLabel>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, overflowX: "auto", padding: "2px 5px 6px 2px" }}>
           {weekly.groups.map((g, gi) => {
             const color = weekColors[g.name] || PALETTE.forest;
             return (
@@ -818,11 +1288,11 @@ function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReo
       </div>
 
       {/* ---- Daily (toggle icônes, groupée avec petites séparations) ---- */}
-      <div style={{ marginBottom: 16 }}>
-        <TaskSectionLabel variant={rebrand?.labelVariant}>Daily</TaskSectionLabel>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, overflowX: "auto", padding: "2px 5px 5px 2px" }}>
+      <div style={{ marginBottom: 18 }}>
+        <SectionLabel color={PALETTE.berry}>Daily</SectionLabel>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, overflowX: "auto", padding: "2px 5px 6px 2px" }}>
           {daily.groups.map((g, gi) => {
-            const color = g.color || PALETTE.amber;
+            const color = colorForIndex(gi);
             return (
               <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                 {gi > 0 && <span style={{ width: 1.5, height: 16, background: PALETTE.line, margin: "0 3px", flexShrink: 0 }} />}
@@ -842,7 +1312,7 @@ function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReo
       <div>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
           <div>
-            <TaskSectionLabel variant={rebrand?.labelVariant}>Missions</TaskSectionLabel>
+            <SectionLabel color={PALETTE.amber}>Missions</SectionLabel>
             <p style={{ fontSize: 12, color: PALETTE.inkFaint, margin: "3px 0 0" }}>{totalDone} / {totalCount} faites</p>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
@@ -856,7 +1326,7 @@ function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReo
         {state.tasks.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <SortableList items={state.tasks} keyId="id" onReorder={onReorderTasks}
-              gridStyle={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}
+              gridStyle={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(104px, 1fr))", gap: 8 }}
               renderItem={(t, i, d) => <MissionChip item={t} onToggle={onToggleSimple} onDelete={onDeleteSimple} onDragStart={d} />} />
           </div>
         )}
@@ -871,13 +1341,11 @@ function DossiersView({ dossiers, onReorderDossiers, onOpenDossier, onDeleteDoss
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-        <div>
-          <h1 style={{ fontFamily: PALETTE.fontDisplay, fontSize: 24, fontWeight: 700, color: PALETTE.ink, margin: 0 }}>Dossiers</h1>
-          <p style={{ fontSize: 12, color: PALETTE.inkFaint, margin: "3px 0 0" }}>{doneCount} / {dossiers.length} terminés</p>
-        </div>
-        <PillButton variant="ghost" icon={RotateCcw} onClick={onResetOrder}>Ordre A→Z</PillButton>
-      </div>
+      <PageHeader
+        title="Dossiers"
+        subtitle={`${doneCount} / ${dossiers.length} terminés`}
+        action={<PillButton variant="ghost" icon={RotateCcw} onClick={onResetOrder}>Ordre A→Z</PillButton>}
+      />
 
       {isEmpty && <EmptyState icon={Folder} title="Aucun dossier" subtitle="Décris un projet à l'assistant pour en créer un" />}
 
@@ -895,15 +1363,14 @@ function DossiersView({ dossiers, onReorderDossiers, onOpenDossier, onDeleteDoss
 function BarRow({ label, current, max, color, icon: Icon }) {
   const pct = max ? Math.round((current / max) * 100) : 0;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {Icon && <Icon size={14} color={color} />}
-        <span style={{ fontSize: 11, fontWeight: 600, color: PALETTE.inkSoft, flex: 1 }}>{label}</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color }}>{current}/{max}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        {Icon && <Icon size={15} color={color} />}
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: PALETTE.inkSoft, flex: 1 }}>{label}</span>
+        <span style={{ fontFamily: PALETTE.fontDisplay, fontSize: 15, fontWeight: 700, color }}>{current}</span>
+        <span style={{ fontSize: 11, color: PALETTE.inkFaint }}>/{max}</span>
       </div>
-      <div style={{ height: 6, background: PALETTE.canvasDeep, borderRadius: 4, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 4, transition: "width 0.4s ease" }} />
-      </div>
+      <ProgressBar pct={pct} color={color} height={7} />
     </div>
   );
 }
@@ -919,37 +1386,74 @@ function DashboardView({ state, weekly, daily, monthly, emailItems }) {
   const monthlyTotal = monthly.groups.reduce((a, g) => a + g.tasks.length, 0);
   const emailTotal = Array.isArray(emailItems) ? emailItems.reduce((a, g) => a + (g.items?.length || 0), 0) : 0;
 
-  const card = { background: PALETTE.panel, border: `1.5px solid ${PALETTE.line}`, borderRadius: 16, padding: 14 };
+  // Élan du jour : tout ce qui est cochable aujourd'hui, une seule jauge
+  const dayDone = weekDone + dailyDone + totalDone;
+  const dayTotal = weekTotal + dailyTotal + totalCount;
+  const dayPct = dayTotal ? Math.round((dayDone / dayTotal) * 100) : 0;
 
   return (
     <div>
-      <h1 style={{ fontFamily: PALETTE.fontDisplay, fontSize: 24, fontWeight: 700, color: PALETTE.ink, margin: "0 0 16px" }}>Dashboard</h1>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-        <div style={card}><BarRow label="Tâches" current={totalDone} max={totalCount || 1} color={PALETTE.amber} icon={ListChecks} /></div>
-        <div style={card}><BarRow label="Hebdo" current={weekDone} max={weekTotal || 1} color={PALETTE.forest} icon={CalendarDays} /></div>
-        <div style={card}><BarRow label="Daily" current={dailyDone} max={dailyTotal || 1} color={PALETTE.berry} icon={Zap} /></div>
-        <div style={card}><BarRow label="Mensuelle" current={monthlyDone} max={monthlyTotal || 1} color={PALETTE.sky} icon={CalendarRange} /></div>
-        <div style={card}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Mail size={14} color={PALETTE.clay} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: PALETTE.inkSoft, flex: 1 }}>Email</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: PALETTE.clay }}>{emailTotal}</span>
+      {/* Bandeau d'élan — la première chose qu'on voit en ouvrant l'app */}
+      <div className="cl-rise" style={cardStyle({
+        borderRadius: PALETTE.radiusCardLg, padding: "20px 18px", marginBottom: 16,
+        display: "flex", alignItems: "center", gap: 18,
+        background: PALETTE.accentGrad
+          ? PALETTE.accentGrad
+          : `linear-gradient(135deg, ${PALETTE.forest}10 0%, ${PALETTE.amber}0E 100%), ${PALETTE.cardBg || PALETTE.panel}`,
+        boxShadow: PALETTE.accentGrad ? PALETTE.glowAccent : PALETTE.cardShadow,
+      })}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: 11, fontWeight: PALETTE.labelWeight, letterSpacing: PALETTE.labelTracking,
+            textTransform: "uppercase", color: PALETTE.accentGrad ? "rgba(255,255,255,0.85)" : PALETTE.inkFaint,
+          }}>
+            {greeting()} · {todayLabel()}
           </div>
-          <div style={{ fontSize: 10.5, color: PALETTE.inkFaint, marginTop: 4 }}>action{emailTotal > 1 ? "s" : ""} à traiter</div>
+          <div style={{ ...titleStyle({ marginTop: 7 }), color: PALETTE.accentGrad ? "#FFFFFF" : PALETTE.ink }}>
+            {dayDone} sur {dayTotal}
+          </div>
+          <div style={{ fontSize: 13, marginTop: 7, color: PALETTE.accentGrad ? "rgba(255,255,255,0.92)" : PALETTE.inkSoft }}>
+            {pepTalk(dayPct, dayTotal)}
+          </div>
+        </div>
+        <div style={{ position: "relative", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <ProgressRing pct={dayPct} color={PALETTE.accentGrad ? "#FFFFFF" : PALETTE.forest} size={64} />
+          <span style={{
+            position: "absolute", fontSize: 14, fontWeight: 700, fontFamily: PALETTE.fontBody,
+            color: PALETTE.accentGrad ? "#FFFFFF" : PALETTE.ink,
+          }}>{dayPct}%</span>
+        </div>
+      </div>
+
+      <SectionLabel>Vue d'ensemble</SectionLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+        <div className="cl-card" style={cardStyle({ padding: 14 })}><BarRow label="Tâches" current={totalDone} max={totalCount || 1} color={PALETTE.amber} icon={ListChecks} /></div>
+        <div className="cl-card" style={cardStyle({ padding: 14 })}><BarRow label="Hebdo" current={weekDone} max={weekTotal || 1} color={PALETTE.forest} icon={CalendarDays} /></div>
+        <div className="cl-card" style={cardStyle({ padding: 14 })}><BarRow label="Daily" current={dailyDone} max={dailyTotal || 1} color={PALETTE.berry} icon={Zap} /></div>
+        <div className="cl-card" style={cardStyle({ padding: 14 })}><BarRow label="Mensuelle" current={monthlyDone} max={monthlyTotal || 1} color={PALETTE.sky} icon={CalendarRange} /></div>
+        <div className="cl-card" style={cardStyle({ padding: 14 })}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <Mail size={15} color={PALETTE.clay} />
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: PALETTE.inkSoft, flex: 1 }}>Email</span>
+            <span style={{ fontFamily: PALETTE.fontDisplay, fontSize: 15, fontWeight: 700, color: PALETTE.clay }}>{emailTotal}</span>
+          </div>
+          <div style={{ fontSize: 11, color: PALETTE.inkFaint, marginTop: 5 }}>action{emailTotal > 1 ? "s" : ""} à traiter</div>
         </div>
       </div>
 
       {state.dossiers.length > 0 && (
-        <div style={card}>
+        <div className="cl-card" style={cardStyle({ padding: 16 })}>
           <SectionLabel>Dossiers actifs</SectionLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 10 }}>
             {state.dossiers.map((d, i) => {
               const pct = dossierPct(d);
               return (
                 <div key={d.id} style={{ textAlign: "center" }}>
-                  <ProgressRing pct={pct} color={colorForIndex(i)} size={38} />
-                  <div style={{ fontSize: 10, fontWeight: 600, color: PALETTE.ink, marginTop: 5, wordBreak: "break-word" }}>{d.name}</div>
-                  <div style={{ fontSize: 9, color: PALETTE.inkFaint }}>{pct}%</div>
+                  <div style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <ProgressRing pct={pct} color={colorForIndex(i)} size={44} />
+                    <span style={{ position: "absolute", fontSize: 9.5, fontWeight: 700, color: PALETTE.inkSoft }}>{pct}</span>
+                  </div>
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: PALETTE.ink, marginTop: 6, wordBreak: "break-word", lineHeight: 1.25 }}>{d.name}</div>
                 </div>
               );
             })}
@@ -960,41 +1464,70 @@ function DashboardView({ state, weekly, daily, monthly, emailItems }) {
   );
 }
 
+// Tuile d'un rituel (daily / hebdo / mensuel) — même objet visuel partout
+function RitualTile({ task, color, onClick, minWidth }) {
+  const Icon = getIcon(task.icon);
+  const done = task.done;
+  return (
+    <div
+      className="cl-card cl-tap"
+      onClick={onClick}
+      style={cardStyle({
+        borderRadius: PALETTE.radiusChip, padding: "13px 8px", cursor: "pointer", textAlign: "center",
+        background: done ? `${color}16` : (PALETTE.cardBg || PALETTE.panel),
+        border: PALETTE.cardBorderWidth ? `${PALETTE.cardBorderWidth}px solid ${done ? color : (PALETTE.cardBorderColor || PALETTE.line)}` : "none",
+        boxShadow: done ? "none" : PALETTE.cardShadow,
+        minWidth,
+      })}
+    >
+      {done ? <CheckCircle2 size={19} color={color} /> : <Icon size={19} color={PALETTE.inkFaint} />}
+      <div style={{
+        fontSize: 11.5, fontWeight: PALETTE.bodyWeight, color: done ? color : PALETTE.ink, marginTop: 6,
+        textDecoration: done ? "line-through" : "none", wordBreak: "break-word", lineHeight: 1.25,
+      }}>{task.title}</div>
+    </div>
+  );
+}
+
+// Rendu commun des vues "groupes de rituels" — Quotidien, Hebdo, Mensuelle
+function RitualGroups({ groups, onToggleTask, colorFor, iconFor, tileMin = 96 }) {
+  return (
+    <>
+      {groups.map((g, gi) => {
+        const color = colorFor(g, gi);
+        const Icon = iconFor ? iconFor(g) : getIcon(g.icon);
+        const gDone = g.tasks.filter((t) => t.done).length;
+        return (
+          <div key={g.id} style={{ marginBottom: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <IconBadge icon={Icon} color={color} size={26} />
+              <span style={{
+                fontSize: 11, fontWeight: PALETTE.labelWeight, letterSpacing: PALETTE.labelTracking,
+                color: PALETTE.ink, textTransform: PALETTE.labelCase, flex: 1,
+              }}>{g.name}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: gDone === g.tasks.length ? color : PALETTE.inkFaint }}>
+                {gDone}/{g.tasks.length}
+              </span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gap: 8 }}>
+              {g.tasks.map((t) => (
+                <RitualTile key={t.id} task={t} color={color} onClick={() => onToggleTask(g.id, t.id)} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function DailyView({ daily, onToggleTask }) {
   const total = daily.groups.reduce((a, g) => a + g.tasks.length, 0);
   const done = daily.groups.reduce((a, g) => a + g.tasks.filter((t) => t.done).length, 0);
   return (
     <div>
-      <h1 style={{ fontFamily: PALETTE.fontDisplay, fontSize: 24, fontWeight: 700, color: PALETTE.ink, margin: 0 }}>Quotidien</h1>
-      <p style={{ fontSize: 12, color: PALETTE.inkFaint, margin: "3px 0 18px" }}>{done} / {total} · rituels du jour</p>
-      {daily.groups.map((g) => {
-        const Icon = getIcon(g.icon);
-        const color = g.color || PALETTE.amber;
-        return (
-          <div key={g.id} style={{ marginBottom: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <Icon size={14} color={color} />
-              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.8, color, textTransform: "uppercase" }}>{g.name}</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: 7 }}>
-              {g.tasks.map((t) => {
-                const TaskIcon = getIcon(t.icon);
-                return (
-                  <div key={t.id} onClick={() => onToggleTask(g.id, t.id)} style={{
-                    background: t.done ? `${color}14` : PALETTE.panel,
-                    border: `1.5px solid ${t.done ? color : PALETTE.line}`,
-                    borderRadius: PALETTE.radiusChip, padding: "11px 8px", cursor: "pointer",
-                    textAlign: "center", transition: "all 0.15s ease",
-                  }}>
-                    <TaskIcon size={17} color={t.done ? color : PALETTE.inkFaint} />
-                    <div style={{ fontSize: 11, fontWeight: 600, color: t.done ? color : PALETTE.ink, marginTop: 5, textDecoration: t.done ? "line-through" : "none", wordBreak: "break-word" }}>{t.title}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+      <PageHeader title="Quotidien" subtitle={`${done} / ${total} · rituels du jour`} icon={Zap} color={PALETTE.berry} />
+      <RitualGroups groups={daily.groups} onToggleTask={onToggleTask} colorFor={(g, i) => colorForIndex(i)} />
     </div>
   );
 }
@@ -1013,36 +1546,14 @@ function WeekView({ weekly, onToggleTask }) {
 
   return (
     <div>
-      <h1 style={{ fontFamily: PALETTE.fontDisplay, fontSize: 24, fontWeight: 700, color: PALETTE.ink, margin: 0 }}>Hebdo</h1>
-      <p style={{ fontSize: 12, color: PALETTE.inkFaint, margin: "3px 0 18px" }}>{done} / {total} · lundi → dimanche</p>
-      {weekly.groups.map((g) => {
-        const GroupIcon = WEEK_ICONS[g.name] || Circle;
-        const color = groupColors[g.name] || PALETTE.forest;
-        return (
-          <div key={g.id} style={{ marginBottom: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <GroupIcon size={14} color={color} />
-              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.8, color, textTransform: "uppercase" }}>{g.name}</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 7 }}>
-              {g.tasks.map((t) => {
-                const TaskIcon = getIcon(t.icon);
-                return (
-                  <div key={t.id} onClick={() => onToggleTask(g.id, t.id)} style={{
-                    background: t.done ? `${color}14` : PALETTE.panel,
-                    border: `1.5px solid ${t.done ? color : PALETTE.line}`,
-                    borderRadius: PALETTE.radiusChip, padding: "12px 6px", cursor: "pointer",
-                    textAlign: "center", transition: "all 0.15s ease",
-                  }}>
-                    {t.done ? <CheckCircle2 size={17} color={color} /> : <TaskIcon size={17} color={PALETTE.inkFaint} />}
-                    <div style={{ fontSize: 10.5, fontWeight: 600, color: t.done ? color : PALETTE.ink, marginTop: 5, textDecoration: t.done ? "line-through" : "none", wordBreak: "break-word" }}>{t.title}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+      <PageHeader title="Hebdo" subtitle={`${done} / ${total} · lundi → dimanche`} icon={CalendarDays} color={PALETTE.sky} />
+      <RitualGroups
+        groups={weekly.groups}
+        onToggleTask={onToggleTask}
+        colorFor={(g) => groupColors[g.name] || PALETTE.forest}
+        iconFor={(g) => WEEK_ICONS[g.name] || Circle}
+        tileMin={86}
+      />
     </div>
   );
 }
@@ -1050,19 +1561,18 @@ function WeekView({ weekly, onToggleTask }) {
 function SportView({ sport, onOpenDossier }) {
   return (
     <div>
-      <h1 style={{ fontFamily: PALETTE.fontDisplay, fontSize: 24, fontWeight: 700, color: PALETTE.ink, margin: "0 0 16px" }}>Sport</h1>
+      <PageHeader title="Sport" subtitle={`${sport.dossiers.length} programmes`} icon={Dumbbell} color={PALETTE.sage} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
         {sport.dossiers.map((d, i) => {
           const pct = dossierPct(d);
           const color = colorForIndex(i);
           return (
-            <div key={d.id} onClick={() => onOpenDossier(d.id)} style={{
-              background: PALETTE.panel, border: `1.5px solid ${color}40`, borderRadius: PALETTE.radiusCardLg,
-              padding: "13px", cursor: "pointer",
-            }}>
-              <ProgressRing pct={pct} color={color} size={30} />
-              <div style={{ fontFamily: PALETTE.fontDisplay, fontWeight: 600, fontSize: 15, color: PALETTE.ink, marginTop: 8 }}>{d.name}</div>
-              <div style={{ fontSize: 11, color: PALETTE.inkFaint, marginTop: 2 }}>{d.tasks.length} tâches · {pct}%</div>
+            <div key={d.id} className="cl-card" onClick={() => onOpenDossier(d.id)} style={cardStyle({
+              borderRadius: PALETTE.radiusCardLg, padding: "14px", cursor: "pointer", borderColor: `${color}55`,
+            })}>
+              <ProgressRing pct={pct} color={color} size={32} />
+              <div style={{ fontFamily: PALETTE.fontDisplay, fontWeight: 600, fontSize: 15.5, color: PALETTE.ink, marginTop: 9 }}>{d.name}</div>
+              <div style={{ fontSize: 11.5, color: PALETTE.inkFaint, marginTop: 3 }}>{d.tasks.length} tâches · {pct}%</div>
             </div>
           );
         })}
@@ -1076,36 +1586,8 @@ function MonthlyView({ monthly, onToggleTask }) {
   const done = monthly.groups.reduce((a, g) => a + g.tasks.filter((t) => t.done).length, 0);
   return (
     <div>
-      <h1 style={{ fontFamily: PALETTE.fontDisplay, fontSize: 24, fontWeight: 700, color: PALETTE.ink, margin: 0 }}>Mensuelle</h1>
-      <p style={{ fontSize: 12, color: PALETTE.inkFaint, margin: "3px 0 18px" }}>{done} / {total} · rituels du mois</p>
-      {monthly.groups.map((g) => {
-        const Icon = getIcon(g.icon);
-        const color = g.color || PALETTE.amber;
-        return (
-          <div key={g.id} style={{ marginBottom: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <Icon size={14} color={color} />
-              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.8, color, textTransform: "uppercase" }}>{g.name}</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: 7 }}>
-              {g.tasks.map((t) => {
-                const TaskIcon = getIcon(t.icon);
-                return (
-                  <div key={t.id} onClick={() => onToggleTask(g.id, t.id)} style={{
-                    background: t.done ? `${color}14` : PALETTE.panel,
-                    border: `1.5px solid ${t.done ? color : PALETTE.line}`,
-                    borderRadius: PALETTE.radiusChip, padding: "11px 8px", cursor: "pointer",
-                    textAlign: "center", transition: "all 0.15s ease",
-                  }}>
-                    <TaskIcon size={17} color={t.done ? color : PALETTE.inkFaint} />
-                    <div style={{ fontSize: 11, fontWeight: 600, color: t.done ? color : PALETTE.ink, marginTop: 5, textDecoration: t.done ? "line-through" : "none", wordBreak: "break-word" }}>{t.title}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+      <PageHeader title="Mensuelle" subtitle={`${done} / ${total} · rituels du mois`} icon={CalendarRange} color={PALETTE.clay} />
+      <RitualGroups groups={monthly.groups} onToggleTask={onToggleTask} colorFor={(g, i) => colorForIndex(i + 1)} />
     </div>
   );
 }
@@ -1119,23 +1601,40 @@ function NavGroupLabel({ children }) {
   );
 }
 
+// Un seul bouton de nav — le thème décide s'il s'agit d'une pilule, d'un bloc ou d'un simple souligné
+function NavButton({ label, icon: Icon, active, onClick, iconSize = 13 }) {
+  const underline = PALETTE.navUnderline;
+  return (
+    <button
+      className="cl-press"
+      onClick={onClick}
+      style={{
+        background: underline ? "transparent" : (active ? (PALETTE.navActiveBg || accentFill()) : "transparent"),
+        color: active ? (underline ? PALETTE.ink : (PALETTE.navActiveColor || PALETTE.onAccent)) : (PALETTE.navIdleColor || PALETTE.inkSoft),
+        padding: PALETTE.navPad, borderRadius: PALETTE.navRadius,
+        fontSize: 12, fontWeight: active ? Math.min(800, PALETTE.navWeight + 100) : PALETTE.navWeight,
+        textTransform: PALETTE.navCase, letterSpacing: PALETTE.navTracking,
+        boxShadow: active && !underline ? PALETTE.navActiveShadow : "none",
+        borderBottom: underline ? `2px solid ${active ? PALETTE.amber : "transparent"}` : "none",
+        whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
+        transition: "all 0.18s cubic-bezier(.34,1.4,.64,1)", flexShrink: 0,
+      }}
+    >
+      <Icon size={iconSize} />{label}
+    </button>
+  );
+}
+
 function NavRow({ items, view, dossierReturnView, onSelect }) {
   return (
-    <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 6 }}>
-      {items.map(({ id, label, icon: Icon }) => {
-        const active = view === id || (view === "dossier" && dossierReturnView === id);
-        return (
-          <button key={id} onClick={() => onSelect(id)} style={{
-            background: active ? PALETTE.forest : "transparent",
-            color: active ? "#fff" : PALETTE.inkSoft,
-            padding: "7px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
-            whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
-            transition: "all 0.15s ease", flexShrink: 0,
-          }}>
-            <Icon size={13} />{label}
-          </button>
-        );
-      })}
+    <div className="cl-navrow" style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 6 }}>
+      {items.map(({ id, label, icon: Icon }) => (
+        <NavButton
+          key={id} label={label} icon={Icon}
+          active={view === id || (view === "dossier" && dossierReturnView === id)}
+          onClick={() => onSelect(id)}
+        />
+      ))}
     </div>
   );
 }
@@ -1147,6 +1646,7 @@ function DomainView({ domainId }) {
 
   if (!domain) return null;
   const Icon = domain.icon;
+  const domColor = PALETTE[domain.colorKey] || PALETTE.forest;
 
   const toggleUnivers = (univerName) => {
     setExpandedUnivers((prev) => ({ ...prev, [univerName]: !prev[univerName] }));
@@ -1162,40 +1662,35 @@ function DomainView({ domainId }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-        <IconBadge icon={Icon} color={domain.color} size={40} />
-        <h1 style={{ fontFamily: PALETTE.fontDisplay, fontSize: 24, fontWeight: 700, color: PALETTE.ink, margin: 0 }}>{domain.name}</h1>
-      </div>
-      <p style={{ fontSize: 12, color: PALETTE.inkFaint, margin: "0 0 18px" }}>Domaine de vie · {objectifs.length} univers</p>
+      <PageHeader title={domain.name} subtitle={`Domaine de vie · ${objectifs.length} univers`} icon={Icon} color={domColor} />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
         {objectifs.map((u) => {
           const isExpanded = expandedUnivers[u.name];
           return (
             <div key={u.name}>
               <button
+                className="cl-card"
                 onClick={() => toggleUnivers(u.name)}
-                style={{
-                  width: "100%", background: PALETTE.panel, border: `1.5px solid ${PALETTE.line}`, borderRadius: 14,
-                  padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
+                style={cardStyle({
+                  width: "100%", padding: "13px 14px", display: "flex", alignItems: "center", gap: 11, cursor: "pointer",
+                })}
               >
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: domain.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: PALETTE.ink, flex: 1, textAlign: "left" }}>{u.name}</span>
-                <ChevronRight size={16} color={PALETTE.inkFaint} style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }} />
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: domColor, flexShrink: 0 }} />
+                <span style={{ fontSize: 14.5, fontWeight: PALETTE.bodyWeight, color: PALETTE.ink, flex: 1, textAlign: "left" }}>{u.name}</span>
+                <ChevronRight size={16} color={PALETTE.inkFaint} style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }} />
               </button>
 
               {isExpanded && (
-                <div style={{ paddingLeft: 20, paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div className="cl-rise" style={{ paddingLeft: 20, paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
                   {u.items.map((obj) => (
                     <div key={obj.id} style={{
-                      background: PALETTE.canvasDeep, border: `1px solid ${PALETTE.line}`, borderRadius: 10,
+                      background: PALETTE.canvasDeep, border: `1px solid ${PALETTE.lineSoft}`, borderRadius: PALETTE.radiusChip,
                       padding: "10px 12px", fontSize: 13, color: PALETTE.ink,
                       display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
                     }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
-                        <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: domain.color, flexShrink: 0 }} />
+                        <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: domColor, flexShrink: 0 }} />
                         {obj.title}
                       </span>
                       <button
@@ -1230,8 +1725,8 @@ function SubtaskRow({ subtask, onToggle, onDelete, isLast }) {
       {/* Connecteur arbre */}
       <span style={{ position: "absolute", left: 10, top: isLast ? -8 : -8, bottom: isLast ? "50%" : -8, width: 1.5, background: PALETTE.line }} />
       <span style={{ position: "absolute", left: 10, top: 18, width: 12, height: 1.5, background: PALETTE.line }} />
-      <div onClick={onToggle} style={{
-        background: PALETTE.canvasDeep, border: `1px solid ${PALETTE.line}`, borderRadius: 10,
+      <div className="cl-tap" onClick={onToggle} style={{
+        background: PALETTE.canvasDeep, border: `1px solid ${PALETTE.lineSoft}`, borderRadius: PALETTE.radiusChip,
         padding: "8px 8px 8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, minHeight: 40,
       }}>
         <Checkbox done={subtask.done} size={16} />
@@ -1247,13 +1742,12 @@ function TaskRow({ task, onToggle, onDelete, onAddSub, onToggleSub, onDeleteSub 
   const hasSubtasks = task.subtasks && task.subtasks.length > 0;
   return (
     <div>
-      <div onClick={onToggle} style={{
-        background: PALETTE.panel, border: `${PALETTE.chipBorderWidth}px solid ${PALETTE.line}`, borderRadius: PALETTE.radiusCard,
+      <div className="cl-card" onClick={onToggle} style={cardStyle({
         padding: "8px 8px 8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, minHeight: 52,
-      }}>
+      })}>
         <Checkbox done={task.done} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: task.done ? PALETTE.inkFaint : PALETTE.ink, textDecoration: task.done ? "line-through" : "none", wordBreak: "break-word" }}>{task.title}</div>
+          <div style={{ fontWeight: PALETTE.bodyWeight, fontSize: 14.5, color: task.done ? PALETTE.inkFaint : PALETTE.ink, textDecoration: task.done ? "line-through" : "none", wordBreak: "break-word" }}>{task.title}</div>
           {hasSubtasks && <div style={{ fontSize: 11, color: PALETTE.inkFaint, marginTop: 2 }}>{task.subtasks.filter((s) => s.done).length} / {task.subtasks.length} sous-tâches</div>}
         </div>
         {hasSubtasks && (
@@ -1276,13 +1770,16 @@ function DossierDetailView({ dossier, onBack, onToggleTask, onDeleteTask, onAddT
   const total = dossier.tasks.length + dossier.tasks.reduce((a, t) => a + (t.subtasks?.length || 0), 0);
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-        <IconButton icon={ChevronLeft} variant="ghost" size={36} iconSize={16} onClick={onBack} title="Retour" />
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontFamily: PALETTE.fontDisplay, fontSize: 20, fontWeight: 700, color: PALETTE.ink, margin: 0 }}>{dossier.name}</h1>
-          <p style={{ fontSize: 12, color: PALETTE.inkFaint, margin: "2px 0 0" }}>{done} / {total}</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 18 }}>
+        <IconButton icon={ChevronLeft} variant="ghost" size={38} iconSize={17} onClick={onBack} title="Retour" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 style={titleStyle({ fontSize: Math.round(PALETTE.h1Size * 0.82) })}>{dossier.name}</h1>
+          <p style={subtitleStyle({ margin: "3px 0 0" })}>{done} / {total} · {total ? Math.round((done / total) * 100) : 0}%</p>
         </div>
         <PillButton variant="primary" icon={Plus} onClick={() => onAddTask(dossier.id)}>Tâche</PillButton>
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <ProgressBar pct={total ? Math.round((done / total) * 100) : 0} color={PALETTE.forest} height={5} />
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {dossier.tasks.map((t) => (
@@ -1299,10 +1796,10 @@ function EmailGroupFolder({ group, onDismiss }) {
   const itemCount = group.items ? group.items.length : 0;
   return (
     <div style={{ marginBottom: 10 }}>
-      <button onClick={() => setExpanded(!expanded)} style={{
-        width: "100%", background: PALETTE.panel, border: `1.5px solid ${group.color}40`,
-        borderRadius: 14, padding: "12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", minHeight: 52,
-      }}>
+      <button className="cl-card" onClick={() => setExpanded(!expanded)} style={cardStyle({
+        width: "100%", padding: "12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", minHeight: 52,
+        borderColor: `${group.color}55`,
+      })}>
         <Mail size={15} color={group.color} />
         <div style={{ flex: 1, textAlign: "left" }}>
           <div style={{ fontWeight: 600, fontSize: 13.5, color: PALETTE.ink }}>{group.group}</div>
@@ -1313,7 +1810,7 @@ function EmailGroupFolder({ group, onDismiss }) {
       {expanded && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8, marginTop: 8, borderLeft: `3px solid ${group.color}` }}>
           {group.items?.map((it) => (
-            <div key={it.id} style={{ background: `${group.color}0a`, border: `1px solid ${group.color}25`, borderRadius: 12, padding: "10px 6px 10px 12px", display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <div key={it.id} style={{ background: `${group.color}0d`, border: `1px solid ${group.color}25`, borderRadius: PALETTE.radiusChip, padding: "10px 6px 10px 12px", display: "flex", alignItems: "flex-start", gap: 6 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: group.color, textTransform: "uppercase", marginBottom: 2 }}>{it.sender}</div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: PALETTE.ink, wordBreak: "break-word" }}>{it.title}</div>
@@ -1332,17 +1829,17 @@ function EmailView({ items, scanning, lastScan, onScan, onDismiss }) {
   const totalItems = Array.isArray(items) ? items.reduce((a, g) => a + (g.items?.length || 0), 0) : 0;
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
-        <div>
-          <h1 style={{ fontFamily: PALETTE.fontDisplay, fontSize: 24, fontWeight: 700, color: PALETTE.ink, margin: 0 }}>Email</h1>
-          <p style={{ fontSize: 11.5, color: PALETTE.inkFaint, margin: "3px 0 0" }}>
-            {lastScan ? `Scanné ${new Date(lastScan).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "Jamais scanné"}
-          </p>
-        </div>
-        <PillButton variant="primary" icon={scanning ? Loader2 : Mail} onClick={onScan} disabled={scanning}>
-          {scanning ? "Scan 30j..." : "Scanner 30j"}
-        </PillButton>
-      </div>
+      <PageHeader
+        title="Email"
+        subtitle={lastScan ? `Scanné ${new Date(lastScan).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "Jamais scanné"}
+        icon={Mail}
+        color={PALETTE.clay}
+        action={
+          <PillButton variant="primary" icon={scanning ? Loader2 : Mail} onClick={onScan} disabled={scanning}>
+            {scanning ? "Scan 30j..." : "Scanner 30j"}
+          </PillButton>
+        }
+      />
       {!scanning && totalItems === 0 && <EmptyState icon={Sparkles} title="Inbox propre" subtitle="Aucune action en attente" />}
       {Array.isArray(items) && items.map((g) => <EmailGroupFolder key={g.id} group={g} onDismiss={onDismiss} />)}
     </div>
@@ -1377,7 +1874,7 @@ const NAV_GROUPS = [
 // ---------- Domaines de vie (arborescence) ----------
 const DOMAINES = {
   "domaine-vitalite": {
-    name: "Vitalité", icon: Heart, color: PALETTE.sage,
+    name: "Vitalité", icon: Heart, colorKey: "sage",
     univers: [
       { name: "Santé", objectifs: [
         { id: uid(), title: "Réparer mon dos", done: false },
@@ -1398,7 +1895,7 @@ const DOMAINES = {
     ],
   },
   "domaine-etudes": {
-    name: "Études", icon: BookOpen, color: PALETTE.sky,
+    name: "Études", icon: BookOpen, colorKey: "sky",
     univers: [
       { name: "Langue", objectifs: [
         { id: uid(), title: "Connaître les lettres en arabe", done: false },
@@ -1422,7 +1919,7 @@ const DOMAINES = {
     ],
   },
   "domaine-passions": {
-    name: "Passions", icon: Sparkles, color: PALETTE.berry,
+    name: "Passions", icon: Sparkles, colorKey: "berry",
     univers: [
       { name: "Clarinette", objectifs: [
         { id: uid(), title: "Discipline d'entraînement", done: false },
@@ -1451,7 +1948,7 @@ const DOMAINES = {
     ],
   },
   "domaine-modeles": {
-    name: "Modèles Économiques", icon: TrendingUp, color: PALETTE.clay,
+    name: "Modèles Économiques", icon: TrendingUp, colorKey: "clay",
     univers: [
       { name: "Projet pro", objectifs: [
         { id: uid(), title: "guide conf", done: false },
@@ -1469,7 +1966,7 @@ const DOMAINES = {
     ],
   },
   "domaine-gestion": {
-    name: "Gestion", icon: Wallet, color: PALETTE.forest,
+    name: "Gestion", icon: Wallet, colorKey: "forest",
     univers: [
       { name: "Moustier", objectifs: [
         { id: uid(), title: "matera", done: false },
@@ -1529,7 +2026,8 @@ export default function Clairiere() {
         storageGet(STORAGE_KEYS.sport), storageGet(STORAGE_KEYS.emails), storageGet(STORAGE_KEYS.chat),
         storageGet(STORAGE_KEYS.theme), storageGet(STORAGE_KEYS.monthly),
       ]);
-      if (th && THEMES[th]) { applyTheme(th); setThemeId(th); }
+      const migrated = LEGACY_THEME_IDS[th] || th;
+      if (migrated && THEMES[migrated]) { applyTheme(migrated); setThemeId(migrated); }
       if (s && (s.tasks || s.dossiers)) setState({ tasks: s.tasks || [], dossiers: s.dossiers || [] });
       if (w) {
         const currentMonday = getMondayISO();
@@ -1657,83 +2155,148 @@ export default function Clairiere() {
   }, [input, sending, messages]);
 
   return (
-    <div style={{ background: PALETTE.canvas, fontFamily: PALETTE.fontBody, minHeight: "100vh" }}>
+    <div style={{ background: PALETTE.appBg, fontFamily: PALETTE.fontBody, minHeight: "100vh", position: "relative" }}>
       <style>{`
         * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; }
+        html, body { background: ${PALETTE.canvas}; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: ${PALETTE.line}; border-radius: 6px; }
-        .clairiere-main { width: 100%; min-height: 100vh; min-height: 100dvh; padding: 14px 14px 84px; overflow-y: auto; max-width: 760px; margin: 0 auto; }
-        @media (min-width: 600px) { .clairiere-main { padding: 22px 22px 92px; } }
+        .clairiere-main { position: relative; z-index: 1; width: 100%; min-height: 100vh; min-height: 100dvh; padding: 16px 14px 92px; overflow-y: auto; max-width: 760px; margin: 0 auto; }
+        @media (min-width: 600px) { .clairiere-main { padding: 26px 22px 100px; } }
         button { font-family: inherit; border: none; background: none; cursor: pointer; }
         input:focus { outline: none; }
+
+        /* Cartes : élévation au survol, pilotée par le thème */
+        .cl-card { transition: transform .2s cubic-bezier(.34,1.3,.64,1), box-shadow .2s ease, border-color .2s ease; }
+        @media (hover: hover) {
+          .cl-card:hover { transform: ${PALETTE.hoverLift}; box-shadow: ${PALETTE.hoverShadow}; }
+        }
+        .cl-card:active { transform: scale(.985); }
+
+        /* Retour tactile sur tout ce qui se coche */
+        .cl-tap:active { transform: scale(.94); }
+        .cl-press:active { transform: scale(.93); }
+
+        /* Entrée de page / de section */
+        @keyframes clRise { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+        .cl-rise { animation: clRise .38s cubic-bezier(.22,.9,.3,1) both; }
+        .clairiere-main > div > * { animation: clRise .34s cubic-bezier(.22,.9,.3,1) both; }
+
+        /* Case cochée : petit rebond de récompense */
+        @keyframes clPop { 0% { transform: scale(1); } 45% { transform: scale(1.22); } 100% { transform: scale(1); } }
+        .cl-checked { animation: clPop .32s cubic-bezier(.34,1.6,.64,1); }
+
+        @media (prefers-reduced-motion: reduce) {
+          * { animation: none !important; transition: none !important; }
+        }
       `}</style>
 
+      {/* Calque décoratif du thème (grain, trames, filets) */}
+      {PALETTE.appOverlay && (
+        <div aria-hidden style={{ position: "fixed", inset: 0, background: PALETTE.appOverlay, backgroundSize: PALETTE.appOverlaySize || "auto", pointerEvents: "none", zIndex: 0 }} />
+      )}
+
       {/* Header + Nav */}
-      <div style={{ position: "sticky", top: 0, zIndex: 50, background: `${PALETTE.canvas}f2`, backdropFilter: "blur(8px)", borderBottom: `1px solid ${PALETTE.line}` }}>
+      <div style={{
+        position: "sticky", top: 0, zIndex: 50, background: PALETTE.headerBg,
+        backdropFilter: `blur(${PALETTE.headerBlur}px)`, WebkitBackdropFilter: `blur(${PALETTE.headerBlur}px)`,
+        borderBottom: PALETTE.headerBorder, boxShadow: PALETTE.headerShadow,
+      }}>
         <div style={{ maxWidth: 760, margin: "0 auto", padding: "12px 14px 0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10, position: "relative" }}>
             <button
+              className="cl-press"
               onClick={() => setView("dashboard")}
               style={{
-                background: view === "dashboard" ? PALETTE.forest : "transparent",
-                color: view === "dashboard" ? "#fff" : PALETTE.forest,
-                padding: "7px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                background: view === "dashboard" ? accentFill() : "transparent",
+                color: view === "dashboard" ? PALETTE.onAccent : PALETTE.forest,
+                padding: PALETTE.navPad, borderRadius: PALETTE.navRadius,
+                boxShadow: view === "dashboard" ? PALETTE.navActiveShadow : "none",
                 whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
-                transition: "all 0.15s ease", flexShrink: 0, border: "none", cursor: "pointer",
+                transition: "all 0.18s cubic-bezier(.34,1.4,.64,1)", flexShrink: 0, border: "none", cursor: "pointer",
               }}
             >
               <Trees size={16} />
-              <span style={{ fontFamily: PALETTE.fontDisplay, fontWeight: 600, fontSize: 15, letterSpacing: 0.2 }}>Clairière</span>
+              <span style={{ fontFamily: PALETTE.fontDisplay, fontWeight: PALETTE.h1Weight, fontSize: 16, letterSpacing: 0.2, textTransform: PALETTE.h1Case, fontStyle: PALETTE.h1Style }}>Clairière</span>
             </button>
             <button
+              className="cl-press"
               onClick={() => setView("tasks")}
               style={{
-                background: view === "tasks" ? PALETTE.forest : "transparent",
-                color: view === "tasks" ? "#fff" : PALETTE.forest,
-                padding: "7px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                background: view === "tasks" ? accentFill() : "transparent",
+                color: view === "tasks" ? PALETTE.onAccent : PALETTE.forest,
+                padding: PALETTE.navPad, borderRadius: PALETTE.navRadius,
+                boxShadow: view === "tasks" ? PALETTE.navActiveShadow : "none",
                 whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
-                transition: "all 0.15s ease", flexShrink: 0, border: "none", cursor: "pointer",
+                transition: "all 0.18s cubic-bezier(.34,1.4,.64,1)", flexShrink: 0, border: "none", cursor: "pointer",
               }}
             >
               <ListChecks size={16} />
-              <span style={{ fontFamily: PALETTE.fontDisplay, fontWeight: 600, fontSize: 15, letterSpacing: 0.2 }}>Tâches</span>
+              <span style={{ fontFamily: PALETTE.fontDisplay, fontWeight: PALETTE.h1Weight, fontSize: 16, letterSpacing: 0.2, textTransform: PALETTE.h1Case, fontStyle: PALETTE.h1Style }}>Tâches</span>
             </button>
             <div style={{ flex: 1 }} />
             <button
+              className="cl-press"
               onClick={() => setThemePickerOpen((o) => !o)}
               title="Changer le style visuel"
               style={{
-                width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
-                border: `1.5px solid ${PALETTE.line}`, background: PALETTE.panel,
+                width: 36, height: 36, borderRadius: PALETTE.radiusPill === "999px" ? "50%" : PALETTE.radiusChip,
+                flexShrink: 0, border: cardBorder(), background: PALETTE.panel,
                 display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                boxShadow: PALETTE.cardShadow,
               }}
             >
-              <span style={{ width: 14, height: 14, borderRadius: "50%", background: `conic-gradient(${THEMES.clairiere.swatch}, ${THEMES.nike.swatch}, ${THEMES.apple.swatch}, ${THEMES.claude.swatch})` }} />
+              <span style={{
+                width: 16, height: 16, borderRadius: PALETTE.radiusPill === "999px" ? "50%" : 2,
+                background: `conic-gradient(${Object.values(THEMES).map((t) => t.swatch).join(",")})`,
+              }} />
             </button>
             {themePickerOpen && (
-              <div style={{
-                position: "absolute", top: 40, right: 0, zIndex: 60,
-                background: PALETTE.panel, border: `1.5px solid ${PALETTE.line}`, borderRadius: 14,
-                boxShadow: "0 14px 34px rgba(0,0,0,0.16)", padding: 8, minWidth: 180,
-              }}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, color: PALETTE.inkFaint, textTransform: "uppercase", padding: "4px 8px 6px" }}>Style visuel</div>
-                {Object.entries(THEMES).map(([id, t]) => (
-                  <button
-                    key={id}
-                    onClick={() => changeTheme(id)}
-                    style={{
-                      width: "100%", display: "flex", alignItems: "center", gap: 9,
-                      padding: "9px 8px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                      color: PALETTE.ink, background: themeId === id ? PALETTE.canvasDeep : "transparent",
-                      textAlign: "left", minHeight: 38,
-                    }}
-                  >
-                    <span style={{ width: 14, height: 14, borderRadius: "50%", background: t.swatch, flexShrink: 0, border: `1.5px solid ${PALETTE.line}` }} />
-                    {t.label}
-                    {themeId === id && <Check size={12} color={PALETTE.forest} style={{ marginLeft: "auto" }} />}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div onClick={() => setThemePickerOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 55 }} />
+                <div className="cl-rise" style={{
+                  position: "absolute", top: 44, right: 0, zIndex: 60,
+                  background: PALETTE.panel, border: cardBorder(), borderRadius: PALETTE.radiusCardLg,
+                  boxShadow: "0 18px 44px rgba(0,0,0,0.18)", padding: 10, width: 268, maxWidth: "calc(100vw - 28px)",
+                }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, color: PALETTE.inkFaint, textTransform: "uppercase", padding: "2px 4px 9px" }}>Style visuel</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                    {Object.entries(THEMES).map(([id, t]) => {
+                      const active = themeId === id;
+                      return (
+                        <button
+                          key={id}
+                          className="cl-press"
+                          onClick={() => changeTheme(id)}
+                          title={t.tagline}
+                          style={{
+                            display: "flex", flexDirection: "column", alignItems: "stretch", gap: 7,
+                            padding: 8, borderRadius: PALETTE.radiusChip, textAlign: "left",
+                            border: `2px solid ${active ? PALETTE.forest : PALETTE.lineSoft}`,
+                            background: active ? PALETTE.canvasDeep : "transparent",
+                            transition: "all 0.18s ease",
+                          }}
+                        >
+                          {/* Aperçu miniature du thème */}
+                          <span style={{
+                            height: 30, borderRadius: t.radiusChip || 8, display: "block",
+                            background: `linear-gradient(120deg, ${t.canvas || "#fff"} 0%, ${t.canvasDeep || "#eee"} 100%)`,
+                            border: `1px solid ${t.line || "#ddd"}`, position: "relative", overflow: "hidden",
+                          }}>
+                            <span style={{ position: "absolute", left: 6, top: 8, width: 26, height: 5, borderRadius: 3, background: t.swatch }} />
+                            <span style={{ position: "absolute", left: 6, top: 17, width: 40, height: 4, borderRadius: 3, background: t.line }} />
+                            <span style={{ position: "absolute", right: 6, top: 8, width: 14, height: 14, borderRadius: t.checkboxShape === "square" ? 3 : "50%", background: t.swatch2 || t.swatch }} />
+                          </span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, color: PALETTE.ink }}>
+                            {t.label}
+                            {active && <Check size={12} color={PALETTE.forest} style={{ marginLeft: "auto" }} />}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
             )}
           </div>
           <NavGroupLabel>{NAV_GROUPS.find((g) => g.id === "recurrences")?.label}</NavGroupLabel>
@@ -1780,17 +2343,23 @@ export default function Clairiere() {
       {/* Floating input bar */}
       <div style={{
         position: "fixed", bottom: 12, left: 12, right: 12, maxWidth: 730, margin: "0 auto",
-        background: PALETTE.panel, border: `1.5px solid ${PALETTE.line}`, borderRadius: 999,
+        background: PALETTE.cardBlur ? PALETTE.cardBg : PALETTE.panel,
+        backdropFilter: PALETTE.cardBlur ? `blur(${PALETTE.cardBlur}px)` : undefined,
+        WebkitBackdropFilter: PALETTE.cardBlur ? `blur(${PALETTE.cardBlur}px)` : undefined,
+        border: cardBorder(), borderRadius: PALETTE.radiusPill === "999px" ? 999 : PALETTE.radiusCardLg,
         padding: "6px 6px 6px 8px", display: "flex", gap: 6, alignItems: "center", zIndex: 100,
-        boxShadow: "0 10px 30px rgba(31,42,30,0.12)",
+        boxShadow: PALETTE.hoverShadow,
       }}>
-        <button onClick={() => setChatOpen((o) => !o)} style={{ width: 36, height: 36, borderRadius: "50%", background: PALETTE.canvasDeep, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <button className="cl-press" onClick={() => setChatOpen((o) => !o)} title="Assistant" style={{
+          width: 36, height: 36, borderRadius: PALETTE.radiusPill === "999px" ? "50%" : PALETTE.radiusChip,
+          background: PALETTE.canvasDeep, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}>
           <StatusDot status={assistantStatus} />
         </button>
         <input
           value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder="Ajoute une tâche ou un dossier..."
-          style={{ flex: 1, border: "none", background: "transparent", fontSize: 14, color: PALETTE.ink, minWidth: 0 }}
+          style={{ flex: 1, border: "none", background: "transparent", fontSize: 14, fontFamily: PALETTE.fontBody, color: PALETTE.ink, minWidth: 0 }}
         />
         <IconButton icon={Mic} variant={isRecording ? "amber" : "ghost"} size={36} iconSize={15} onClick={toggleRecording} title="Micro" />
         <IconButton icon={Send} variant="primary" size={36} iconSize={15} onClick={send} disabled={sending || !input.trim()} title="Envoyer" style={{ opacity: sending || !input.trim() ? 0.4 : 1 }} />
@@ -1803,12 +2372,12 @@ export default function Clairiere() {
 
       {/* Chat overlay */}
       {chatOpen && (
-        <div style={{
-          position: "fixed", top: 70, right: 12, width: "min(300px, 88vw)", maxHeight: "55vh",
-          background: PALETTE.panel, border: `1.5px solid ${PALETTE.line}`, borderRadius: 18,
-          boxShadow: "0 22px 50px rgba(31,42,30,0.22)", zIndex: 200, display: "flex", flexDirection: "column", overflow: "hidden",
+        <div className="cl-rise" style={{
+          position: "fixed", top: 70, right: 12, width: "min(320px, 88vw)", maxHeight: "58vh",
+          background: PALETTE.panel, border: cardBorder(), borderRadius: PALETTE.radiusCardLg,
+          boxShadow: "0 22px 50px rgba(0,0,0,0.20)", zIndex: 200, display: "flex", flexDirection: "column", overflow: "hidden",
         }}>
-          <div style={{ padding: "10px 10px 10px 14px", borderBottom: `1px solid ${PALETTE.line}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: PALETTE.canvasDeep }}>
+          <div style={{ padding: "10px 10px 10px 14px", borderBottom: `1px solid ${PALETTE.lineSoft}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: PALETTE.canvasDeep }}>
             <span style={{ fontWeight: 600, fontSize: 13, color: PALETTE.ink, display: "flex", alignItems: "center", gap: 6 }}>
               <StatusDot status={assistantStatus} /> Assistant
             </span>
@@ -1818,10 +2387,12 @@ export default function Clairiere() {
             {messages.map((m, i) => (
               <div key={i} style={{
                 alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "85%",
-                background: m.role === "user" ? PALETTE.forest : PALETTE.canvasDeep,
-                color: m.role === "user" ? "#fff" : PALETTE.ink,
-                borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-                padding: "8px 11px", fontSize: 12, lineHeight: 1.4,
+                background: m.role === "user" ? accentFill() : PALETTE.canvasDeep,
+                color: m.role === "user" ? PALETTE.onAccent : PALETTE.ink,
+                borderRadius: PALETTE.radiusPill === "999px"
+                  ? (m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px")
+                  : PALETTE.radiusChip,
+                padding: "9px 12px", fontSize: 12.5, lineHeight: 1.45,
               }}>
                 {m.content}
               </div>

@@ -14,7 +14,7 @@ Une trouée de lumière en forêt pour organiser ta vie.
 - 📅 **Quotidien** — tâches journalières (Ruisseau, Langue, Hobbies, Santé, Sport)
 - 📧 **Email** — scan IA des 30 derniers jours (Gmail MCP)
 - 🏋️ **Sport** — dossiers spécialisés (Jogging, Piscine, Rando, Voyage)
-- 🎨 **Thèmes** — Clairière, Nike, Apple, Claude (design système complet)
+- 🎨 **Styles** — 8 univers visuels complets (fond, formes, ombres, typo, nav)
 - 🤖 **Assistant IA** — Claude Haiku intégré pour créer/gérer au naturel
 - 🎙️ **Micro** — reconnaissance vocale fr-FR
 
@@ -86,13 +86,27 @@ Tous les données sont stockées localement :
 
 ## 🎨 Design System
 
-**Palette Clairière** (défaut) :
-- Canvas : `#F7F3E9` (beige chaud)
-- Forest : `#2C4A32` (vert-forêt)
-- Amber : `#C68A3D` (or ambré)
-- Accent couleurs : clay, sky, sage, berry
+Un seul objet `PALETTE` muté en place par `applyTheme(id)`. Chaque thème
+hérite de `BASE_TOKENS` puis surcharge ce qu'il veut : couleurs, mais aussi
+fond de page (dégradés), calque décoratif, forme et ombre des cartes, style
+de nav, échelle typographique, forme des cases à cocher.
 
-**Autres thèmes** : Nike (sport), Apple (minimaliste), Claude (chaleureux)
+Les 8 styles, tous sur fond clair :
+
+| Style | Univers |
+|---|---|
+| **Clairière** | papier chaud, encre forêt, coins organiques (défaut) |
+| **Élan** | brutalisme sportif — noir/rouge, angles vifs, ombres dures |
+| **Studio** | minimalisme — aucune bordure, grands rayons, ombres douces |
+| **Claude** | chaleureux — terracotta, serif Lora, pilules |
+| **Aurore** | verre dépoli, dégradés pastel, halos colorés |
+| **Encre** | éditorial — grand serif, filets fins, papier réglé |
+| **Pop** | électrique — violet/cyan/rose, cartes épaisses, ombres portées |
+| **Sumi** | japandi — papier de riz, trait fin, un seul vermillon |
+
+Helpers partagés : `cardStyle()`, `cardBorder()`, `accentFill()`,
+`titleStyle()`, `PageHeader`, `SectionLabel`, `HeroBanner`, `RitualTile`.
+Anciens ids stockés (`nike`, `apple`) migrés automatiquement vers `elan` / `studio`.
 
 ---
 
