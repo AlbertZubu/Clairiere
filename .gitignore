@@ -28,3 +28,6 @@ build/
 
 # Données personnelles (stockage backend)
 data/store.json
+
+# Worktrees et état local Claude Code
+.claude/
