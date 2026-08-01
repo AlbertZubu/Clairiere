@@ -129,6 +129,7 @@ Format de sortie exact : {"reply":"...(très court, 3-8 mots)","status":"ok|ques
 app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
 
 app.use(express.static(DIST_DIR));
+app.use("/clairiere", express.static(DIST_DIR));
 app.get("*", (req, res) => {
   res.sendFile(path.join(DIST_DIR, "index.html"));
 });
