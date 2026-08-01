@@ -15,50 +15,109 @@ const app = express();
 app.use(express.json({ limit: "5mb" }));
 
 // ---- Persistance fichier JSON (remplace window.storage) ----
+// Le store entier tient dans un seul fichier : chaque écriture est un
+// read-modify-write. Au chargement l'app envoie ~7 PUT en parallèle, qui
+// lisaient tous le même snapshot — la dernière réponse écrasait les autres et
+// les clés disparaissaient. On sérialise donc tous les accès au fichier dans
+// une chaîne de promesses, et l'écriture passe par un fichier temporaire
+// renommé (atomique) pour ne jamais laisser de store.json tronqué.
+let storeQueue = Promise.resolve();
+
+function withStore(fn) {
+  const run = storeQueue.then(() => fn());
+  // La file avance même si une opération échoue, sans propager le rejet.
+  storeQueue = run.then(noop, noop);
+  return run;
+}
+function noop() {}
+
 async function loadStore() {
+  let raw;
   try {
-    const raw = await fs.readFile(DATA_FILE, "utf8");
-    return JSON.parse(raw);
+    raw = await fs.readFile(DATA_FILE, "utf8");
   } catch {
     return {};
   }
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    // Fichier illisible : on le met de côté au lieu de l'écraser en silence.
+    const backup = `${DATA_FILE}.corrupt-${Date.now()}`;
+    await fs.rename(DATA_FILE, backup).catch(() => {});
+    console.error(`store.json illisible (${e.message}), sauvegardé dans ${backup}`);
+    return {};
+  }
 }
+
 async function saveStore(store) {
   await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify(store, null, 2), "utf8");
+  const tmp = `${DATA_FILE}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(store, null, 2), "utf8");
+  await fs.rename(tmp, DATA_FILE);
+}
+
+// Lit le store, applique `mutate`, réécrit — le tout sous le verrou.
+function updateStore(mutate) {
+  return withStore(async () => {
+    const store = await loadStore();
+    const result = mutate(store);
+    await saveStore(store);
+    return result;
+  });
 }
 
 app.get("/api/storage/:key", async (req, res) => {
-  const store = await loadStore();
-  const key = req.params.key;
-  if (!(key in store)) return res.status(404).json({ error: "not_found" });
-  res.json({ key, value: store[key], shared: false });
+  try {
+    const store = await withStore(loadStore);
+    const key = req.params.key;
+    if (!(key in store)) return res.status(404).json({ error: "not_found" });
+    res.json({ key, value: store[key], shared: false });
+  } catch (e) {
+    console.error("storage get failed:", e.message);
+    res.status(500).json({ error: "storage_failure" });
+  }
 });
 
 app.put("/api/storage/:key", async (req, res) => {
-  const store = await loadStore();
   const key = req.params.key;
   const { value } = req.body || {};
   if (typeof value !== "string") return res.status(400).json({ error: "value_must_be_string" });
-  store[key] = value;
-  await saveStore(store);
-  res.json({ key, value, shared: false });
+  try {
+    await updateStore((store) => {
+      store[key] = value;
+    });
+    res.json({ key, value, shared: false });
+  } catch (e) {
+    console.error("storage put failed:", e.message);
+    res.status(500).json({ error: "storage_failure" });
+  }
 });
 
 app.delete("/api/storage/:key", async (req, res) => {
-  const store = await loadStore();
   const key = req.params.key;
-  const existed = key in store;
-  delete store[key];
-  await saveStore(store);
-  res.json({ key, deleted: existed, shared: false });
+  try {
+    const existed = await updateStore((store) => {
+      const had = key in store;
+      delete store[key];
+      return had;
+    });
+    res.json({ key, deleted: existed, shared: false });
+  } catch (e) {
+    console.error("storage delete failed:", e.message);
+    res.status(500).json({ error: "storage_failure" });
+  }
 });
 
 app.get("/api/storage", async (req, res) => {
-  const store = await loadStore();
-  const prefix = req.query.prefix || "";
-  const keys = Object.keys(store).filter((k) => k.startsWith(prefix));
-  res.json({ keys, prefix, shared: false });
+  try {
+    const store = await withStore(loadStore);
+    const prefix = req.query.prefix || "";
+    const keys = Object.keys(store).filter((k) => k.startsWith(prefix));
+    res.json({ keys, prefix, shared: false });
+  } catch (e) {
+    console.error("storage list failed:", e.message);
+    res.status(500).json({ error: "storage_failure" });
+  }
 });
 
 // ---- Chat assistant via Ollama local (remplace l'appel direct à l'API Anthropic) ----
