@@ -1,6 +1,8 @@
 import express from "express";
 import path from "path";
 import fs from "fs/promises";
+import os from "os";
+import { execFile } from "child_process";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -10,6 +12,17 @@ const DIST_DIR = path.join(ROOT, "dist");
 const PORT = process.env.PORT || 4000;
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma3:4b";
+// Modèle dédié à la mise en forme d'une dictée en tâche + sous-tâches.
+// Séparé du chat : il doit sortir du JSON strict, pas de la conversation.
+// Par défaut le même modèle que le chat : un seul 4B reste chargé en RAM,
+// donc pas de rechargement de 55 s en passant du chat à la dictée.
+const OLLAMA_STRUCTURE_MODEL = process.env.OLLAMA_STRUCTURE_MODEL || OLLAMA_MODEL;
+// Transcription locale (whisper.cpp). Si le binaire ou le modèle manque,
+// /api/transcribe répond 503 et le navigateur bascule sur sa propre dictée.
+// whisper.cpp tourne en service systemd (`whisper.service`) et garde son modèle
+// en RAM : relancer le binaire à chaque dictée relisait 488 Mo depuis la carte
+// SD, soit ~20 s de latence pure avant même de transcrire.
+const WHISPER_URL = process.env.WHISPER_URL || "http://127.0.0.1:8081";
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
@@ -185,6 +198,185 @@ Format de sortie exact : {"reply":"...(très court, 3-8 mots)","status":"ok|ques
   }
 });
 
+// ---- Dictée vocale : audio du navigateur -> texte, via whisper.cpp local ----
+// Le navigateur envoie le blob brut (webm/opus le plus souvent, mp4/aac sur
+// iOS). ffmpeg le normalise en WAV 16 kHz mono, seul format accepté par
+// whisper.cpp. Tout reste sur le Pi : aucun audio ne sort de la machine.
+function run(cmd, args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(`${path.basename(cmd)}: ${err.message} ${stderr || ""}`.trim()));
+      resolve(stdout);
+    });
+  });
+}
+
+async function whisperAvailable() {
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(`${WHISPER_URL}/`, { signal: controller.signal });
+    clearTimeout(t);
+    return res.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+app.post("/api/transcribe", express.raw({ type: () => true, limit: "25mb" }), async (req, res) => {
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    return res.status(400).json({ error: "empty_audio" });
+  }
+  if (!(await whisperAvailable())) {
+    // 503 distinct du 500 : le front peut dire « transcription indisponible »
+    // plutôt que « échec », et l'utilisateur sait qu'il doit réécrire au clavier.
+    return res.status(503).json({ error: "whisper_unavailable" });
+  }
+
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const inFile = path.join(os.tmpdir(), `clairiere-${stamp}.bin`);
+  const wavFile = path.join(os.tmpdir(), `clairiere-${stamp}.wav`);
+  const cleanup = () => Promise.all([fs.unlink(inFile).catch(noop), fs.unlink(wavFile).catch(noop)]);
+
+  try {
+    await fs.writeFile(inFile, req.body);
+    // whisper n'accepte que du PCM 16 kHz mono ; le navigateur envoie de
+    // l'opus (Android/Chrome) ou de l'aac (iOS), d'où le passage par ffmpeg.
+    await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", inFile,
+      "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wavFile], 60000);
+
+    const form = new FormData();
+    form.append("file", new Blob([await fs.readFile(wavFile)]), "audio.wav");
+    form.append("language", "fr");
+    form.append("response_format", "json");
+
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 180000);
+    const wres = await fetch(`${WHISPER_URL}/inference`, {
+      method: "POST", body: form, signal: controller.signal,
+    });
+    clearTimeout(t);
+    if (!wres.ok) throw new Error(`whisper HTTP ${wres.status}`);
+    const wdata = await wres.json();
+
+    // whisper marque les passages sans parole par [BLANK_AUDIO] / (musique).
+    const text = String(wdata.text || "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !/^[[(].*[\])]$/.test(l))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    res.json({ text });
+  } catch (e) {
+    console.error("transcribe failed:", e.message);
+    res.status(500).json({ error: "transcribe_failure" });
+  } finally {
+    cleanup();
+  }
+});
+
+// ---- Mise en forme : texte libre -> tâche + sous-tâches ----
+// Ollama sait contraindre sa sortie à un schéma JSON (`format`), ce qui évite
+// d'avoir à rattraper du markdown ou du texte parasite autour du JSON.
+const TASK_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    subtasks: { type: "array", items: { type: "string" } },
+  },
+  required: ["title", "subtasks"],
+};
+const SUBTASK_SCHEMA = {
+  type: "object",
+  properties: { subtasks: { type: "array", items: { type: "string" } } },
+  required: ["subtasks"],
+};
+
+// Repli si le modèle est indisponible ou hors sujet : on garde toujours la
+// parole de l'utilisateur plutôt que de perdre la dictée.
+function fallbackTitle(text) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= 80) return clean;
+  return `${clean.slice(0, 77).trimEnd()}...`;
+}
+
+app.post("/api/structure", async (req, res) => {
+  const { transcript = "", mode = "task", parentTitle = "" } = req.body || {};
+  const text = String(transcript).trim();
+  if (!text) return res.status(400).json({ error: "empty_transcript" });
+
+  const isSubtask = mode === "subtask";
+  const system = isSubtask
+    ? `Tu convertis une dictée en sous-tâches d'une tâche existante intitulée "${parentTitle}".
+Règles :
+- Chaque sous-tâche est une action concrète, à l'infinitif, 8 mots maximum.
+- Reprends TOUTES les actions mentionnées, sans en omettre une seule.
+- Découpe uniquement ce que la dictée mentionne, n'invente rien.
+- Si la dictée ne contient qu'une seule action, renvoie un seul élément.
+- 6 sous-tâches maximum. Réponds en français.`
+    : `Tu convertis une dictée en tâche structurée.
+Règles :
+- "title" : le but global, à l'infinitif, 6 mots maximum, sans détail.
+- "subtasks" : les étapes concrètes que la dictée mentionne, à l'infinitif, 8 mots maximum chacune.
+- Reprends TOUTES les actions mentionnées, sans en omettre une seule.
+- N'ajoute JAMAIS une étape que la dictée n'évoque pas. Deux sous-tâches fidèles
+  valent mieux que six inventées.
+- Si la dictée décrit une action unique et simple, "subtasks" doit être vide.
+- 6 sous-tâches maximum. Réponds en français.`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 150000);
+
+  try {
+    const ollamaRes = await fetch(`${OLLAMA_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_STRUCTURE_MODEL,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: text },
+        ],
+        format: isSubtask ? SUBTASK_SCHEMA : TASK_SCHEMA,
+        think: false,
+        stream: false,
+        keep_alive: "30m",
+        options: { temperature: 0.2, num_predict: 400 },
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!ollamaRes.ok) throw new Error(`Ollama HTTP ${ollamaRes.status}`);
+
+    const data = await ollamaRes.json();
+    const parsed = JSON.parse(extractJson(data.message?.content || "{}"));
+
+    const subtasks = (Array.isArray(parsed.subtasks) ? parsed.subtasks : [])
+      .map((s) => String(s).trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    const title = isSubtask ? "" : String(parsed.title || "").trim() || fallbackTitle(text);
+
+    res.json({ title, subtasks, transcript: text, degraded: false });
+  } catch (e) {
+    clearTimeout(timeout);
+    console.error("structure failed:", e.message);
+    // Le modèle a lâché : on rend quand même une tâche exploitable.
+    res.json({
+      title: isSubtask ? "" : fallbackTitle(text),
+      subtasks: isSubtask ? [fallbackTitle(text)] : [],
+      transcript: text,
+      degraded: true,
+    });
+  }
+});
+
+app.get("/api/voice-status", async (req, res) => {
+  res.json({ whisper: await whisperAvailable(), model: OLLAMA_STRUCTURE_MODEL });
+});
+
 app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
 
 app.use(express.static(DIST_DIR));
@@ -193,6 +385,25 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(DIST_DIR, "index.html"));
 });
 
+// Précharge le modèle de mise en forme : sans ça, la première dictée de la
+// journée attend ~55 s le seul chargement du modèle depuis le disque.
+function warmStructureModel() {
+  fetch(`${OLLAMA_URL}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: OLLAMA_STRUCTURE_MODEL,
+      messages: [{ role: "user", content: "ok" }],
+      stream: false, think: false, keep_alive: "30m",
+      options: { num_predict: 1 },
+    }),
+  }).then(
+    () => console.log(`modèle ${OLLAMA_STRUCTURE_MODEL} préchargé`),
+    (e) => console.warn(`préchargement ${OLLAMA_STRUCTURE_MODEL} échoué:`, e.message),
+  );
+}
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Clairière server running on http://0.0.0.0:${PORT} (modèle chat: ${OLLAMA_MODEL})`);
+  warmStructureModel();
 });

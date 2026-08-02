@@ -16,7 +16,10 @@ Une trouée de lumière en forêt pour organiser ta vie.
 - 🏋️ **Sport** — dossiers spécialisés (Jogging, Piscine, Rando, Voyage)
 - 🎨 **Styles** — 8 univers visuels complets (fond, formes, ombres, typo, nav)
 - 🤖 **Assistant IA** — Claude Haiku intégré pour créer/gérer au naturel
-- 🎙️ **Micro** — reconnaissance vocale fr-FR
+- 🎙️ **Dictée vocale** — appui long sur « Ajouter une tâche » ou sur le « + »
+  d'une tâche : la parole est transcrite puis découpée en tâche + sous-tâches,
+  entièrement en local sur le Pi (whisper.cpp + Ollama). Nécessite un accès
+  `https://` — voir `CLAUDE.md`.
 
 ---
 

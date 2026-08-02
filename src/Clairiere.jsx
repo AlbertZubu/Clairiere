@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useVoiceCapture, transcribeAudio, structureText, micUnavailableReason, MIC_HELP } from "./voice";
 import {
   Send, ChevronDown, ChevronRight, ChevronLeft, Trash2, Circle,
   CheckCircle2, Loader2, GripVertical, Mic, ListChecks, CalendarDays,
@@ -1148,52 +1149,6 @@ function SimpleTaskCard({ item, onToggle, onDelete, onDragStart }) {
   );
 }
 
-function MissionChip({ item, onToggle, onDelete, onDragStart }) {
-  const squareCheckbox = PALETTE.checkboxShape === "square";
-  return (
-    <div
-      onPointerDown={onDragStart}
-      onClick={() => onToggle(item.id)}
-      className="cl-tap"
-      style={{
-        position: "relative", background: item.done ? `${PALETTE.forest}12` : (PALETTE.cardBg || PALETTE.panel),
-        border: PALETTE.chipBorderWidth ? `${PALETTE.chipBorderWidth}px solid ${item.done ? PALETTE.forest : ctrlLine()}` : "none",
-        borderRadius: PALETTE.missionRadius, padding: "12px 8px", cursor: "pointer",
-        display: "flex", flexDirection: "column", alignItems: "center", gap: 7,
-        minHeight: 74, boxShadow: item.done ? "none" : PALETTE.chipShadow,
-        backdropFilter: PALETTE.cardBlur ? `blur(${PALETTE.cardBlur}px)` : undefined,
-        transition: "all 0.18s cubic-bezier(.34,1.4,.64,1)",
-      }}
-    >
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-        style={{
-          position: "absolute", top: -8, right: -8, width: 24, height: 24, borderRadius: "50%",
-          background: "transparent", border: "none", cursor: "pointer", padding: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}
-        title="Supprimer"
-      >
-        <span style={{
-          width: 16, height: 16, borderRadius: squareCheckbox ? 3 : "50%", background: PALETTE.canvasDeep,
-          border: `1px solid ${PALETTE.line}`, display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <X size={10} color={PALETTE.inkFaint} strokeWidth={3} />
-        </span>
-      </button>
-      <Checkbox done={item.done} size={19} />
-      <span style={{
-        fontSize: 11.5, fontWeight: PALETTE.bodyWeight, color: item.done ? PALETTE.inkFaint : PALETTE.ink,
-        textDecoration: item.done ? "line-through" : "none", textAlign: "center",
-        lineHeight: 1.2, wordBreak: "break-word", display: "-webkit-box",
-        WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-      }}>
-        {item.title}
-      </span>
-    </div>
-  );
-}
-
 // Chip toggle réutilisé par Hebdo et Daily — forme/taille/ombre pilotées par le thème actif
 function TaskChip({ done, color, icon: Icon, title, onClick }) {
   return (
@@ -1246,9 +1201,196 @@ function DossierCard({ dossier, index, onOpen, onDelete, onDragStart }) {
 }
 
 // ============================================================
+// AJOUT DE TÂCHES — appui court / appui long
+// ------------------------------------------------------------
+// Un même bouton porte les deux gestes :
+//   appui court -> ouvre un bandeau de saisie clavier
+//   appui long  -> enregistre la voix tant que le doigt reste posé
+// Relâcher hors du bouton annule : c'est le geste habituel des
+// messageries vocales, on garde le même réflexe.
+// ============================================================
+function HoldButton({
+  onTap, onHoldStart, onHoldEnd, onHoldCancel, onClick,
+  holdMs = 350, disabled, title, style, children,
+}) {
+  const holdingRef = useRef(false);
+  const timerRef = useRef(null);
+  const [held, setHeld] = useState(false);
+
+  const clearTimer = () => { clearTimeout(timerRef.current); timerRef.current = null; };
+  const endHold = (cancelled) => {
+    holdingRef.current = false;
+    setHeld(false);
+    (cancelled ? onHoldCancel : onHoldEnd)?.();
+  };
+
+  const handleDown = (e) => {
+    if (disabled) return;
+    e.preventDefault();
+    // La capture garantit de recevoir le pointerup même si le doigt glisse
+    // hors du bouton — sans elle, un enregistrement pourrait rester ouvert.
+    // Elle échoue si le pointeur n'est plus actif ; ce n'est pas bloquant, mais
+    // sans ce garde-fou l'exception empêcherait d'armer l'appui long.
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
+    timerRef.current = setTimeout(() => {
+      holdingRef.current = true;
+      setHeld(true);
+      navigator.vibrate?.(25);
+      onHoldStart?.();
+    }, holdMs);
+  };
+
+  const handleUp = (e) => {
+    if (disabled) return;
+    e.preventDefault();
+    clearTimer();
+    if (!holdingRef.current) { onTap?.(); return; }
+    // Relâché loin du bouton = geste d'annulation.
+    const r = e.currentTarget.getBoundingClientRect();
+    const outside = e.clientX < r.left - 30 || e.clientX > r.right + 30
+      || e.clientY < r.top - 30 || e.clientY > r.bottom + 30;
+    endHold(outside);
+  };
+
+  const handleCancel = () => { clearTimer(); if (holdingRef.current) endHold(true); };
+  useEffect(() => clearTimer, []);
+
+  return (
+    <button
+      onPointerDown={handleDown}
+      onPointerUp={handleUp}
+      onPointerCancel={handleCancel}
+      onClick={onClick}
+      onContextMenu={(e) => e.preventDefault()}
+      disabled={disabled}
+      title={title}
+      style={{
+        touchAction: "none", WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none",
+        transform: held ? "scale(1.06)" : "none",
+        transition: "transform .18s cubic-bezier(.34,1.4,.64,1)",
+        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.45 : 1,
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Bandeau de saisie clavier — ouvert par l'appui court.
+function Composer({ placeholder, onSubmit, onCancel, autoFocus = true }) {
+  const [value, setValue] = useState("");
+  const inputRef = useRef(null);
+  useEffect(() => { if (autoFocus) inputRef.current?.focus(); }, [autoFocus]);
+
+  const submit = () => {
+    const v = value.trim();
+    if (!v) { onCancel(); return; }
+    setValue("");
+    onSubmit(v);
+  };
+
+  return (
+    <div className="cl-rise" style={{
+      display: "flex", alignItems: "center", gap: 6, marginTop: 8,
+      background: PALETTE.cardBg || PALETTE.panel, border: cardBorder(),
+      borderRadius: PALETTE.radiusCard, padding: "6px 6px 6px 12px",
+      boxShadow: PALETTE.cardShadow,
+    }}>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+          if (e.key === "Escape") onCancel();
+        }}
+        placeholder={placeholder}
+        style={{
+          flex: 1, border: "none", background: "transparent", minWidth: 0,
+          fontSize: 14, fontFamily: PALETTE.fontBody, color: PALETTE.ink,
+        }}
+      />
+      <IconButton icon={X} variant="subtle" size={32} iconSize={14} onClick={onCancel} title="Annuler" />
+      <IconButton icon={Check} variant="primary" size={32} iconSize={15} onClick={submit}
+        title="Valider" disabled={!value.trim()} style={{ opacity: value.trim() ? 1 : 0.4 }} />
+    </div>
+  );
+}
+
+// Bandeau plein écran pendant l'enregistrement : il faut voir sans ambiguïté
+// que le micro est ouvert, et savoir comment annuler.
+function RecordingOverlay({ live }) {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    if (!live) return undefined;
+    const i = setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => clearInterval(i);
+  }, [live]);
+  return (
+    <div style={{
+      position: "fixed", bottom: 64, left: 12, right: 12, maxWidth: 730, margin: "0 auto",
+      background: PALETTE.ink, color: PALETTE.canvas, borderRadius: PALETTE.radiusCardLg,
+      padding: "13px 16px", display: "flex", alignItems: "center", gap: 11, zIndex: 300,
+      boxShadow: "0 18px 44px rgba(0,0,0,0.3)",
+    }}>
+      <span className="cl-rec-dot" style={{
+        width: 11, height: 11, borderRadius: "50%", background: PALETTE.danger, flexShrink: 0,
+      }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700 }}>
+          {live ? `J'écoute… ${secs}s` : "Ouverture du micro…"}
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
+          {live
+            ? "Relâche pour valider · glisse le doigt à côté pour annuler"
+            : "Garde le doigt posé"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Message court et transitoire (dictée vide, modèle indisponible, etc.)
+function Toast({ message }) {
+  if (!message) return null;
+  return (
+    <div className="cl-rise" style={{
+      position: "fixed", bottom: 64, left: 12, right: 12, maxWidth: 730, margin: "0 auto",
+      background: PALETTE.ink, color: PALETTE.canvas, borderRadius: PALETTE.radiusChip,
+      padding: "10px 14px", fontSize: 12.5, lineHeight: 1.4, zIndex: 300, textAlign: "center",
+      boxShadow: "0 14px 34px rgba(0,0,0,0.26)",
+    }}>
+      {message}
+    </div>
+  );
+}
+
+// Ligne d'attente affichée pendant que la dictée est transcrite puis analysée.
+// La tâche apparaît immédiatement : on ne fait jamais patienter devant du vide.
+function PendingRow({ phase, indent = false }) {
+  const label = phase === "thinking" ? "Découpage en sous-tâches…" : "Transcription…";
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 9, minHeight: indent ? 40 : 52,
+      background: PALETTE.canvasDeep, border: `1px dashed ${ctrlLine()}`,
+      borderRadius: indent ? PALETTE.radiusChip : PALETTE.radiusCard,
+      padding: indent ? "8px 10px" : "8px 12px",
+      marginLeft: indent ? 28 : 0, marginTop: indent ? 8 : 0,
+    }}>
+      <Loader2 size={indent ? 13 : 15} color={PALETTE.inkFaint} className="cl-spin" />
+      <span style={{ fontSize: indent ? 12.5 : 13.5, color: PALETTE.inkFaint, fontStyle: "italic" }}>{label}</span>
+    </div>
+  );
+}
+
+// ============================================================
 // VIEWS
 // ============================================================
-function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReorderTasks, onResetOrder, onRequestReset, onToggleWeeklyTask, onToggleDailyTask, themeId }) {
+function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReorderTasks, onResetOrder,
+  onRequestReset, onToggleWeeklyTask, onToggleDailyTask, themeId,
+  onAddTask, onAddSubtask, onToggleSubtask, onDeleteSubtask, taskVoice, subVoice }) {
+  const [composing, setComposing] = useState(false);
   const totalDone = state.tasks.filter((t) => t.done).length;
   const totalCount = state.tasks.length;
   const isEmpty = state.tasks.length === 0;
@@ -1308,26 +1450,67 @@ function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReo
         </div>
       </div>
 
-      {/* ---- Missions (ajoutées manuellement, grille 6 colonnes compacte) ---- */}
+      {/* ---- Missions (ajout clavier ou dictée, sous-tâches dépliables) ---- */}
       <div>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
           <div>
             <SectionLabel color={PALETTE.amber}>Missions</SectionLabel>
             <p style={{ fontSize: 12, color: PALETTE.inkFaint, margin: "3px 0 0" }}>{totalDone} / {totalCount} faites</p>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <PillButton variant="ghost" icon={RotateCcw} onClick={onResetOrder}>Ordre A→Z</PillButton>
             <PillButton variant="dangerGhost" icon={AlertTriangle} onClick={onRequestReset}>Réinitialiser</PillButton>
           </div>
         </div>
 
-        {isEmpty && <EmptyState title="Rien pour l'instant" subtitle="Ajoute une mission depuis la barre en bas" />}
+        {/* Le bouton principal : un appui pour taper, un appui maintenu pour dicter. */}
+        <HoldButton
+          title="Ajouter une tâche — maintenir pour dicter"
+          onTap={() => setComposing((c) => !c)}
+          onHoldStart={() => taskVoice?.start()}
+          onHoldEnd={() => taskVoice?.end()}
+          onHoldCancel={() => taskVoice?.cancel()}
+          style={{
+            marginTop: 12, width: "100%", background: accentFill(), color: PALETTE.onAccent,
+            boxShadow: PALETTE.glowAccent, borderRadius: PALETTE.radiusPill === "999px" ? 999 : PALETTE.radiusCard,
+            padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
+            fontFamily: PALETTE.fontBody, fontSize: 13.5, fontWeight: PALETTE.navWeight || 700,
+            textTransform: PALETTE.navCase, letterSpacing: PALETTE.navTracking,
+          }}
+        >
+          <Plus size={16} />
+          <span>Ajouter une tâche</span>
+          <Mic size={14} style={{ opacity: 0.7, marginLeft: 2 }} />
+        </HoldButton>
+        <p style={{ fontSize: 10.5, color: PALETTE.inkFaint, margin: "6px 2px 0", textAlign: "center" }}>
+          Appui court : écrire · Appui long : dicter
+        </p>
+
+        {composing && (
+          <Composer
+            placeholder="Nom de la tâche…"
+            onSubmit={(v) => { onAddTask(v); setComposing(false); }}
+            onCancel={() => setComposing(false)}
+          />
+        )}
+
+        {isEmpty && <EmptyState title="Rien pour l'instant" subtitle="Ajoute une mission avec le bouton ci-dessus" />}
 
         {state.tasks.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <SortableList items={state.tasks} keyId="id" onReorder={onReorderTasks}
-              gridStyle={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(104px, 1fr))", gap: 8 }}
-              renderItem={(t, i, d) => <MissionChip item={t} onToggle={onToggleSimple} onDelete={onDeleteSimple} onDragStart={d} />} />
+              gridStyle={{ display: "flex", flexDirection: "column", gap: 8 }}
+              renderItem={(t, i, d) => (
+                <TaskRow
+                  task={t} onDragStart={d}
+                  onToggle={() => onToggleSimple(t.id)}
+                  onDelete={onDeleteSimple}
+                  onAddSub={onAddSubtask}
+                  onToggleSub={onToggleSubtask}
+                  onDeleteSub={onDeleteSubtask}
+                  subVoice={subVoice}
+                />
+              )} />
           </div>
         )}
       </div>
@@ -1737,28 +1920,72 @@ function SubtaskRow({ subtask, onToggle, onDelete, isLast }) {
   );
 }
 
-function TaskRow({ task, onToggle, onDelete, onAddSub, onToggleSub, onDeleteSub }) {
+function TaskRow({ task, onToggle, onDelete, onAddSub, onToggleSub, onDeleteSub, onDragStart, subVoice }) {
   const [expanded, setExpanded] = useState(false);
-  const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+  const [composing, setComposing] = useState(false);
+  const subtasks = task.subtasks || [];
+  const settled = subtasks.filter((s) => !s.pending);
+  const hasSubtasks = subtasks.length > 0;
+
+  // La tâche elle-même est encore en cours de dictée : rien à cocher.
+  if (task.pending) return <PendingRow phase={task.pending} />;
+
+  const openComposer = () => { setExpanded(true); setComposing(true); };
+
   return (
     <div>
       <div className="cl-card" onClick={onToggle} style={cardStyle({
         padding: "8px 8px 8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, minHeight: 52,
       })}>
+        {onDragStart && <DragHandle onPointerDown={onDragStart} />}
         <Checkbox done={task.done} />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: PALETTE.bodyWeight, fontSize: 14.5, color: task.done ? PALETTE.inkFaint : PALETTE.ink, textDecoration: task.done ? "line-through" : "none", wordBreak: "break-word" }}>{task.title}</div>
-          {hasSubtasks && <div style={{ fontSize: 11, color: PALETTE.inkFaint, marginTop: 2 }}>{task.subtasks.filter((s) => s.done).length} / {task.subtasks.length} sous-tâches</div>}
+          {settled.length > 0 && <div style={{ fontSize: 11, color: PALETTE.inkFaint, marginTop: 2 }}>{settled.filter((s) => s.done).length} / {settled.length} sous-tâches</div>}
         </div>
         {hasSubtasks && (
           <IconButton icon={expanded ? ChevronDown : ChevronRight} variant="subtle" size={30} iconSize={14} onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} title="Déplier" />
         )}
-        <IconButton icon={Plus} variant="subtle" size={30} iconSize={14} onClick={(e) => { e.stopPropagation(); onAddSub(task.id); }} title="Ajouter sous-tâche" color={PALETTE.amber} />
+        {/* Appui court : champ de saisie. Appui long : dictée (si branchée). */}
+        {subVoice ? (
+          <HoldButton
+            title="Sous-tâche — maintenir pour dicter"
+            onClick={(e) => e.stopPropagation()}
+            onTap={() => { setExpanded(true); setComposing((c) => !c); }}
+            onHoldStart={() => { setExpanded(true); subVoice.start(task.id); }}
+            onHoldEnd={() => subVoice.end()}
+            onHoldCancel={() => subVoice.cancel()}
+            style={{
+              width: 30, height: 30, flexShrink: 0, background: "transparent",
+              borderRadius: PALETTE.radiusPill === "999px" ? "50%" : PALETTE.radiusChip,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <Plus size={14} color={PALETTE.amber} />
+          </HoldButton>
+        ) : (
+          <IconButton icon={Plus} variant="subtle" size={30} iconSize={14} color={PALETTE.amber}
+            title="Ajouter une sous-tâche"
+            onClick={(e) => { e.stopPropagation(); openComposer(); }} />
+        )}
         <IconButton icon={Trash2} variant="subtle" size={30} iconSize={13} onClick={(e) => { e.stopPropagation(); onDelete(task.id); }} title="Supprimer" />
       </div>
+
+      {expanded && composing && (
+        <div style={{ paddingLeft: 28 }} onClick={(e) => e.stopPropagation()}>
+          <Composer
+            placeholder="Nom de la sous-tâche…"
+            onSubmit={(v) => { onAddSub(task.id, v); setComposing(false); }}
+            onCancel={() => setComposing(false)}
+          />
+        </div>
+      )}
+
       {expanded && hasSubtasks && (
-        <div style={{ position: "relative" }}>{task.subtasks.map((s, si) => (
-          <SubtaskRow key={s.id} subtask={s} onToggle={() => onToggleSub(task.id, s.id)} onDelete={() => onDeleteSub(task.id, s.id)} isLast={si === task.subtasks.length - 1} />
+        <div style={{ position: "relative" }}>{subtasks.map((s, si) => (
+          s.pending
+            ? <PendingRow key={s.id} phase={s.pending} indent />
+            : <SubtaskRow key={s.id} subtask={s} onToggle={() => onToggleSub(task.id, s.id)} onDelete={() => onDeleteSub(task.id, s.id)} isLast={si === subtasks.length - 1} />
         ))}</div>
       )}
     </div>
@@ -2017,6 +2244,11 @@ export default function Clairiere() {
   const [isRecording, setIsRecording] = useState(false);
   const [micError, setMicError] = useState(false);
   const recognitionRef = useRef(null);
+  const voice = useVoiceCapture();
+  const voiceTargetRef = useRef(null);
+  const [voiceArmed, setVoiceArmed] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
 
   // ---- initial load ----
   useEffect(() => {
@@ -2107,7 +2339,7 @@ export default function Clairiere() {
   const toggleDossierTask = (taskId) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, done: !t.done } : t)) } : d)));
   const deleteDossierTask = (taskId) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.filter((t) => t.id !== taskId) } : d)));
   const addTaskToDossier = (dossierId) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === dossierId ? { ...d, tasks: [...d.tasks, { id: uid(), title: "Nouvelle tâche", done: false, subtasks: [] }] } : d)));
-  const addSubtask = (taskId) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: [...(t.subtasks || []), { id: uid(), title: "Sous-tâche", done: false }] } : t)) } : d)));
+  const addSubtask = (taskId, title) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: [...(t.subtasks || []), { id: uid(), title: title || "Sous-tâche", done: false }] } : t)) } : d)));
   const toggleSubtask = (taskId, subtaskId) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: (t.subtasks || []).map((s) => (s.id === subtaskId ? { ...s, done: !s.done } : s)) } : t)) } : d)));
   const deleteSubtask = (taskId, subtaskId) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: (t.subtasks || []).filter((s) => s.id !== subtaskId) } : t)) } : d)));
 
@@ -2129,6 +2361,142 @@ export default function Clairiere() {
       setEmailLastScan(new Date().toISOString());
     } catch (e) { console.error("scan failed", e); }
     finally { setEmailScanning(false); }
+  };
+
+
+  // ---- Dictée : capture, transcription, découpage ----
+  const showToast = useCallback((message) => {
+    clearTimeout(toastTimerRef.current);
+    setToast(message);
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+  }, []);
+
+  // Sous-tâches des missions (state.tasks) — miroir des helpers `dossiers`.
+  const patchMission = (taskId, fn) =>
+    setState((prev) => ({ ...prev, tasks: prev.tasks.map((t) => (t.id === taskId ? fn(t) : t)) }));
+
+  const addMissionTask = (title) =>
+    setState((prev) => ({ ...prev, tasks: [...prev.tasks, { id: uid(), title, done: false, subtasks: [] }] }));
+  const addMissionSubtask = (taskId, title) =>
+    patchMission(taskId, (t) => ({ ...t, subtasks: [...(t.subtasks || []), { id: uid(), title, done: false }] }));
+  const toggleMissionSubtask = (taskId, subId) =>
+    patchMission(taskId, (t) => ({ ...t, subtasks: (t.subtasks || []).map((s) => (s.id === subId ? { ...s, done: !s.done } : s)) }));
+  const deleteMissionSubtask = (taskId, subId) =>
+    patchMission(taskId, (t) => ({ ...t, subtasks: (t.subtasks || []).filter((s) => s.id !== subId) }));
+
+  // `voiceArmed` s'allume dès l'appui, avant même que le micro soit ouvert :
+  // getUserMedia peut prendre un instant, voire attendre une autorisation, et
+  // sans retour visuel immédiat on croit que l'appui long n'a pas pris.
+  const startVoice = useCallback(async (target) => {
+    const reason = micUnavailableReason();
+    if (reason) { showToast(MIC_HELP[reason]); return; }
+    setVoiceArmed(true);
+    voiceTargetRef.current = target;
+    const failure = await voice.start();
+    if (failure) {
+      setVoiceArmed(false);
+      voiceTargetRef.current = null;
+      showToast(MIC_HELP[failure] || MIC_HELP.failed);
+    }
+  }, [voice, showToast]);
+
+  const cancelVoice = useCallback(() => {
+    voice.cancel();
+    setVoiceArmed(false);
+    voiceTargetRef.current = null;
+  }, [voice]);
+
+  // Une dictée en tâche : la ligne apparaît tout de suite en « transcription… »,
+  // se remplit avec le texte brut dès qu'il arrive, puis est remplacée par le
+  // titre et les sous-tâches que le modèle en tire. On ne fait jamais attendre
+  // devant un écran vide, et le texte dicté n'est jamais perdu en route.
+  const finishVoice = useCallback(async () => {
+    const target = voiceTargetRef.current;
+    const wasRecording = voice.recording;
+    voiceTargetRef.current = null;
+    setVoiceArmed(false);
+    const blob = await voice.stop();
+    if (!target) return;
+    if (!blob) {
+      showToast(wasRecording
+        ? "Appui trop court — maintiens le bouton pour dicter."
+        : "Micro pas encore prêt — réessaie.");
+      return;
+    }
+
+    const placeholderId = uid();
+    const isSub = target.kind === "subtask";
+    const parent = isSub ? state.tasks.find((t) => t.id === target.taskId) : null;
+
+    const setPending = (phase) => {
+      if (isSub) patchMission(target.taskId, (t) => ({ ...t, subtasks: [...(t.subtasks || []), { id: placeholderId, pending: phase }] }));
+      else setState((prev) => ({ ...prev, tasks: [...prev.tasks, { id: placeholderId, pending: phase }] }));
+    };
+    const updatePending = (patch) => {
+      if (isSub) patchMission(target.taskId, (t) => ({ ...t, subtasks: (t.subtasks || []).map((sx) => (sx.id === placeholderId ? { ...sx, ...patch } : sx)) }));
+      else setState((prev) => ({ ...prev, tasks: prev.tasks.map((t) => (t.id === placeholderId ? { ...t, ...patch } : t)) }));
+    };
+    const dropPending = () => {
+      if (isSub) patchMission(target.taskId, (t) => ({ ...t, subtasks: (t.subtasks || []).filter((sx) => sx.id !== placeholderId) }));
+      else setState((prev) => ({ ...prev, tasks: prev.tasks.filter((t) => t.id !== placeholderId) }));
+    };
+
+    setPending("transcribing");
+    let text = "";
+    try {
+      text = await transcribeAudio(blob);
+    } catch (e) {
+      dropPending();
+      showToast(e.message === "whisper_unavailable"
+        ? "Transcription indisponible sur le Pi."
+        : "La transcription a échoué.");
+      return;
+    }
+    if (!text) { dropPending(); showToast("Rien entendu."); return; }
+
+    // Le texte brut suffit déjà à avoir une tâche utilisable.
+    updatePending({ title: text, done: false, pending: "thinking", subtasks: [] });
+
+    try {
+      const result = await structureText(text, isSub ? "subtask" : "task", parent?.title || "");
+      if (isSub) {
+        const titles = result.subtasks.length ? result.subtasks : [text];
+        patchMission(target.taskId, (t) => ({
+          ...t,
+          subtasks: [
+            ...(t.subtasks || []).filter((sx) => sx.id !== placeholderId),
+            ...titles.map((title) => ({ id: uid(), title, done: false })),
+          ],
+        }));
+      } else {
+        updatePending({
+          title: result.title || text,
+          pending: null,
+          subtasks: result.subtasks.map((title) => ({ id: uid(), title, done: false })),
+        });
+      }
+      if (result.degraded) showToast("Modèle local indisponible : dictée gardée telle quelle.");
+    } catch {
+      // Le découpage a échoué : on garde la transcription brute comme tâche.
+      if (isSub) {
+        patchMission(target.taskId, (t) => ({
+          ...t,
+          subtasks: (t.subtasks || []).map((sx) => (sx.id === placeholderId ? { id: placeholderId, title: text, done: false } : sx)),
+        }));
+      } else updatePending({ pending: null });
+      showToast("Découpage impossible : texte gardé tel quel.");
+    }
+  }, [voice, state.tasks, showToast]);
+
+  const taskVoice = {
+    start: () => startVoice({ kind: "task" }),
+    end: finishVoice,
+    cancel: cancelVoice,
+  };
+  const subVoice = {
+    start: (taskId) => startVoice({ kind: "subtask", taskId }),
+    end: finishVoice,
+    cancel: cancelVoice,
   };
 
   const send = useCallback(async () => {
@@ -2185,6 +2553,15 @@ export default function Clairiere() {
         /* Case cochée : petit rebond de récompense */
         @keyframes clPop { 0% { transform: scale(1); } 45% { transform: scale(1.22); } 100% { transform: scale(1); } }
         .cl-checked { animation: clPop .32s cubic-bezier(.34,1.6,.64,1); }
+
+        /* Rotation des indicateurs d'attente. La classe .animate-spin était
+           utilisée par le chat sans avoir jamais été définie : rien ne tournait. */
+        @keyframes clSpin { to { transform: rotate(360deg); } }
+        .cl-spin, .animate-spin { animation: clSpin 1s linear infinite; }
+
+        /* Pastille d'enregistrement : battement lent, bien visible */
+        @keyframes clPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.82); } }
+        .cl-rec-dot { animation: clPulse 1.1s ease-in-out infinite; }
 
         @media (prefers-reduced-motion: reduce) {
           * { animation: none !important; transition: none !important; }
@@ -2321,7 +2698,10 @@ export default function Clairiere() {
         {view === "tasks" && (
           <TasksView state={state} weekly={weekly} daily={daily} onToggleSimple={toggleSimpleTask} onDeleteSimple={deleteSimpleTask}
             onReorderTasks={reorderTasks} onResetOrder={resetTasksOrder} onRequestReset={() => setConfirmingReset(true)}
-            onToggleWeeklyTask={toggleWeeklyTask} onToggleDailyTask={toggleDailyTask} themeId={themeId} />
+            onToggleWeeklyTask={toggleWeeklyTask} onToggleDailyTask={toggleDailyTask} themeId={themeId}
+            onAddTask={addMissionTask} onAddSubtask={addMissionSubtask}
+            onToggleSubtask={toggleMissionSubtask} onDeleteSubtask={deleteMissionSubtask}
+            taskVoice={taskVoice} subVoice={subVoice} />
         )}
         {view === "dossiers" && (
           <DossiersView dossiers={state.dossiers} onReorderDossiers={reorderDossiers} onOpenDossier={openDossier}
@@ -2369,6 +2749,9 @@ export default function Clairiere() {
           </div>
         )}
       </div>
+
+      {(voiceArmed || voice.recording) && <RecordingOverlay live={voice.recording} />}
+      {!voiceArmed && !voice.recording && <Toast message={toast} />}
 
       {/* Chat overlay */}
       {chatOpen && (
