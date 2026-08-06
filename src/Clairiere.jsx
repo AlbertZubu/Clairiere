@@ -1698,16 +1698,19 @@ function useTaskItem(task, expandSignal) {
 }
 
 // Zone dépliée commune : sous-tâches + champ d'ajout + suppression.
-function MissionSubs({ task, color, onToggleSub, onDeleteSub, onAddSub, onDelete, subVoice, onDragStart, onChangeSubEta }) {
+function MissionSubs({ task, color, onToggleSub, onDeleteSub, onAddSub, onDelete, subVoice, onDragStart, onChangeSubEta, onChangeSubTitle }) {
   return (
     <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
       {(task.subtasks || []).map((s) => s.pending
         ? <PendingRow key={s.id} phase={s.pending} indent />
         : (
-          <div key={s.id} className="cl-tap" onClick={() => onToggleSub(task.id, s.id)}
-            style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px", cursor: "pointer", minHeight: 30 }}>
-            <Checkbox done={s.done} size={16} />
-            <span style={{ flex: 1, fontSize: 12.5, lineHeight: 1.35, ...strike(s.done) }}>{s.title}</span>
+          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px", minHeight: 30 }}>
+            <span onClick={() => onToggleSub(task.id, s.id)} className="cl-tap" style={{ cursor: "pointer", display: "flex" }}>
+              <Checkbox done={s.done} size={16} />
+            </span>
+            <EditableTitle value={s.title} done={s.done} onToggle={() => onToggleSub(task.id, s.id)}
+              onRename={onChangeSubTitle ? (v) => onChangeSubTitle(task.id, s.id, v) : undefined}
+              style={{ flex: 1, fontSize: 12.5, lineHeight: 1.35 }} />
             {onChangeSubEta && <EtaChip value={s.eta} onChange={(v) => onChangeSubEta(task.id, s.id, v)} />}
             <TrashLink onClick={() => onDeleteSub(task.id, s.id)} size={11} />
           </div>
@@ -1851,16 +1854,117 @@ function TaskMeta({ task, onChangeCategorie, onChangeEta }) {
   );
 }
 
+// ---------- Titre éditable (appui court = action existante, appui long = renommer) ----------
+// Le geste est capté ICI, jamais via un onClick séparé posé par l'appelant :
+// un appui long produit quand même un `click` natif au relâchement (pointerup
+// suivi de click, quelle que soit la durée), donc `handleClick` doit à la
+// fois avaler ce clic post-appui-long ET empêcher sa remontée vers un
+// conteneur parent qui coche au clic (cas du thème Élan, où le titre est
+// imbriqué dans une zone plus large qui coche au tap).
+function EditableTitle({ value, done, onToggle, onRename, tag = "span", style, holdMs = 480 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const firedRef = useRef(false);
+  const timerRef = useRef(null);
+
+  const startPress = () => {
+    firedRef.current = false;
+    clearTimeout(timerRef.current);
+    if (!onRename) return;
+    timerRef.current = setTimeout(() => {
+      firedRef.current = true;
+      navigator.vibrate?.(20);
+      setDraft(value);
+      setEditing(true);
+    }, holdMs);
+  };
+  const clearPress = () => clearTimeout(timerRef.current);
+  const handleClick = (e) => {
+    e.stopPropagation();
+    if (firedRef.current) { firedRef.current = false; return; }
+    onToggle?.();
+  };
+
+  const commit = () => {
+    const v = draft.trim();
+    setEditing(false);
+    if (v && v !== value) onRename(v);
+  };
+  const cancel = () => { setEditing(false); setDraft(value); };
+
+  if (editing) {
+    return (
+      // Cliquer n'importe où en dehors annule — via la perte de focus de
+      // l'input, captée par `onBlur`. Valider est un choix explicite
+      // (Entrée ou le bouton ✓), jamais une conséquence du focus perdu.
+      // `stopPropagation` ici évite qu'un clic sur l'input ou le bouton ne
+      // remonte vers un conteneur parent qui coche au clic.
+      <span onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 4, width: "100%" }}>
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          onBlur={cancel}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            if (e.key === "Escape") { e.preventDefault(); cancel(); }
+          }}
+          style={{
+            minWidth: 0, border: "none", borderBottom: `1.5px solid ${PALETTE.forest}`, background: "transparent",
+            outline: "none", padding: 0, fontFamily: "inherit",
+            ...style, flex: 1, color: PALETTE.ink, textDecoration: "none",
+          }}
+        />
+        <button
+          className="cl-press"
+          // Empêche le focus (donc le blur/annulation de l'input) de se
+          // déplacer vers ce bouton avant que son clic n'ait pu valider.
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={commit}
+          title="Valider le nouveau titre"
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            width: 20, height: 20, borderRadius: "50%", background: PALETTE.forest, color: "#FFF",
+          }}
+        >
+          <Check size={11} />
+        </button>
+      </span>
+    );
+  }
+
+  const Tag = tag;
+  return (
+    <Tag
+      onPointerDown={startPress}
+      onPointerUp={clearPress}
+      onPointerLeave={clearPress}
+      onPointerCancel={clearPress}
+      onContextMenu={(e) => onRename && e.preventDefault()}
+      onClick={handleClick}
+      style={{
+        cursor: "pointer", touchAction: "manipulation", WebkitUserSelect: "none", userSelect: "none",
+        ...style, ...strike(done),
+      }}
+    >
+      {value}
+    </Tag>
+  );
+}
+
 function MissionCard(props) {
-  const { task, index, onToggle, onDelete, onAddSub, onToggleSub, onDeleteSub, subVoice, onDragStart, onChangeCategorie, onChangeEta, onChangeSubEta, expandSignal } = props;
+  const { task, index, onToggle, onDelete, onAddSub, onToggleSub, onDeleteSub, subVoice, onDragStart, onChangeCategorie, onChangeEta, onChangeSubEta, onChangeTitle, onChangeSubTitle, expandSignal } = props;
   const f = PALETTE.family;
   const { open, setOpen, doneSubs, totalSubs } = useTaskItem(task, expandSignal);
   const color = colorForIndex(index);
   const count = totalSubs > 0 ? `${doneSubs}/${totalSubs}` : null;
   const metaRow = <TaskMeta task={task} onChangeCategorie={onChangeCategorie} onChangeEta={onChangeEta} />;
+  const onRenameTask = onChangeTitle ? (v) => onChangeTitle(task.id, v) : undefined;
   const subsArea = open && (
     <MissionSubs task={task} color={color} onToggleSub={onToggleSub} onDeleteSub={onDeleteSub}
-      onAddSub={onAddSub} onDelete={onDelete} subVoice={subVoice} onDragStart={onDragStart} onChangeSubEta={onChangeSubEta} />
+      onAddSub={onAddSub} onDelete={onDelete} subVoice={subVoice} onDragStart={onDragStart}
+      onChangeSubEta={onChangeSubEta} onChangeSubTitle={onChangeSubTitle} />
   );
 
   // — Studio : carte blanche nue, coche circulaire à gauche, tout en retenue.
@@ -1871,9 +1975,8 @@ function MissionCard(props) {
           <span onClick={() => onToggle()} className="cl-tap" style={{ cursor: "pointer", display: "flex" }}>
             <Checkbox done={task.done} size={23} />
           </span>
-          <span onClick={() => onToggle()} style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, letterSpacing: -0.2, lineHeight: 1.3, cursor: "pointer", ...strike(task.done) }}>
-            {task.title}
-          </span>
+          <EditableTitle value={task.title} done={task.done} onToggle={onToggle} onRename={onRenameTask}
+            style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, letterSpacing: -0.2, lineHeight: 1.3 }} />
           <ExpandBtn open={open} onClick={() => setOpen(!open)} count={count} />
         </div>
         {metaRow}
@@ -1900,9 +2003,8 @@ function MissionCard(props) {
           }}>
             {task.done ? <Check size={17} strokeWidth={3} /> : (task.title || "?").charAt(0).toUpperCase()}
           </span>
-          <span onClick={() => onToggle()} style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, lineHeight: 1.3, cursor: "pointer", ...strike(task.done) }}>
-            {task.title}
-          </span>
+          <EditableTitle value={task.title} done={task.done} onToggle={onToggle} onRename={onRenameTask}
+            style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, lineHeight: 1.3 }} />
           <ExpandBtn open={open} onClick={() => setOpen(!open)} count={count} />
         </div>
         {metaRow}
@@ -1925,12 +2027,8 @@ function MissionCard(props) {
               ? <CheckCircle2 size={22} color={PALETTE.forest} />
               : <Sprout size={22} color={color} strokeWidth={2} />}
           </span>
-          <span onClick={() => onToggle()} style={{
-            flex: 1, minWidth: 0, fontFamily: PALETTE.fontDisplay, fontSize: 14.5, fontWeight: 500,
-            lineHeight: 1.3, cursor: "pointer", ...strike(task.done),
-          }}>
-            {task.title}
-          </span>
+          <EditableTitle value={task.title} done={task.done} onToggle={onToggle} onRename={onRenameTask}
+            style={{ flex: 1, minWidth: 0, fontFamily: PALETTE.fontDisplay, fontSize: 14.5, fontWeight: 500, lineHeight: 1.3 }} />
           <ExpandBtn open={open} onClick={() => setOpen(!open)} count={count} />
         </div>
         {metaRow}
@@ -1958,9 +2056,8 @@ function MissionCard(props) {
             flex: 1, minWidth: 0, padding: "8px 10px", cursor: "pointer",
             display: "flex", flexDirection: "column", justifyContent: "center", gap: 2,
           }}>
-            <span style={{ fontSize: 13.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: -0.2, lineHeight: 1.2, ...strike(task.done) }}>
-              {task.title}
-            </span>
+            <EditableTitle value={task.title} done={task.done} onToggle={onToggle} onRename={onRenameTask}
+              style={{ fontSize: 13.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: -0.2, lineHeight: 1.2 }} />
             {count && <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 1.2, color: PALETTE.inkFaint }}>{count}</span>}
           </span>
           <button onClick={() => setOpen(!open)} className="cl-press" style={{
@@ -1986,12 +2083,8 @@ function MissionCard(props) {
   if (f === "claude") {
     return (
       <div className="cl-card" style={cardStyle({ padding: "11px 12px 10px" })}>
-        <div onClick={() => onToggle()} style={{
-          fontFamily: PALETTE.fontDisplay, fontSize: 15, fontWeight: 500, lineHeight: 1.35,
-          cursor: "pointer", ...strike(task.done),
-        }}>
-          {task.title}
-        </div>
+        <EditableTitle tag="div" value={task.title} done={task.done} onToggle={onToggle} onRename={onRenameTask}
+          style={{ fontFamily: PALETTE.fontDisplay, fontSize: 15, fontWeight: 500, lineHeight: 1.35 }} />
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
           <button onClick={() => onToggle()} className="cl-press" style={{
             padding: "5px 12px", borderRadius: 999, fontSize: 11.5, fontWeight: 600,
@@ -2024,9 +2117,8 @@ function MissionCard(props) {
             <ProgressRing pct={pct} color={color} size={32} thickness={3.5} />
             <span style={{ position: "absolute", fontSize: 8.5, fontWeight: 700, color: PALETTE.inkSoft }}>{pct}</span>
           </div>
-          <span onClick={() => onToggle()} style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, lineHeight: 1.3, cursor: "pointer", paddingTop: 2, ...strike(task.done) }}>
-            {task.title}
-          </span>
+          <EditableTitle value={task.title} done={task.done} onToggle={onToggle} onRename={onRenameTask}
+            style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, lineHeight: 1.3, paddingTop: 2 }} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 7 }}>
           <ExpandBtn open={open} onClick={() => setOpen(!open)} count={count} />
@@ -2062,9 +2154,8 @@ function MissionCard(props) {
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 13, fontWeight: 800,
           }}>{(task.title || "?").charAt(0).toUpperCase()}</span>
-          <span onClick={() => onToggle()} style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, lineHeight: 1.3, cursor: "pointer", paddingTop: 1, ...strike(task.done) }}>
-            {task.title}
-          </span>
+          <EditableTitle value={task.title} done={task.done} onToggle={onToggle} onRename={onRenameTask}
+            style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, lineHeight: 1.3, paddingTop: 1 }} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 7 }}>
           <ExpandBtn open={open} onClick={() => setOpen(!open)} count={count} />
@@ -2089,7 +2180,8 @@ function MissionCard(props) {
 }
 
 // Pop conserve sa présentation d'origine (liste de cartes épaisses).
-function PopCardItem({ task, onToggle, onDelete, onAddSub, onToggleSub, onDeleteSub, onDragStart, subVoice, open, setOpen, doneSubs, totalSubs, onChangeCategorie, onChangeEta, onChangeSubEta }) {
+function PopCardItem({ task, onToggle, onDelete, onAddSub, onToggleSub, onDeleteSub, onDragStart, subVoice, open, setOpen, doneSubs, totalSubs, onChangeCategorie, onChangeEta, onChangeSubEta, onChangeTitle, onChangeSubTitle }) {
+  const onRenameTask = onChangeTitle ? (v) => onChangeTitle(task.id, v) : undefined;
   return (
     <div>
       <div className="cl-card" onClick={() => onToggle()} style={cardStyle({
@@ -2098,7 +2190,8 @@ function PopCardItem({ task, onToggle, onDelete, onAddSub, onToggleSub, onDelete
         {onDragStart && <DragHandle onPointerDown={onDragStart} />}
         <Checkbox done={task.done} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: PALETTE.bodyWeight, fontSize: 14.5, ...strike(task.done) }}>{task.title}</div>
+          <EditableTitle tag="div" value={task.title} done={task.done} onToggle={onToggle} onRename={onRenameTask}
+            style={{ fontWeight: PALETTE.bodyWeight, fontSize: 14.5 }} />
           {totalSubs > 0 && <div style={{ fontSize: 11, color: PALETTE.inkFaint, marginTop: 2 }}>{doneSubs} / {totalSubs} sous-missions</div>}
           <TaskMeta task={task} onChangeCategorie={onChangeCategorie} onChangeEta={onChangeEta} />
         </div>
@@ -2119,7 +2212,9 @@ function PopCardItem({ task, onToggle, onDelete, onAddSub, onToggleSub, onDelete
                   padding: "8px 8px 8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, minHeight: 40,
                 }}>
                   <Checkbox done={s.done} size={16} />
-                  <span style={{ fontSize: 13, flex: 1, ...strike(s.done) }}>{s.title}</span>
+                  <EditableTitle value={s.title} done={s.done} onToggle={() => onToggleSub(task.id, s.id)}
+                    onRename={onChangeSubTitle ? (v) => onChangeSubTitle(task.id, s.id, v) : undefined}
+                    style={{ fontSize: 13, flex: 1 }} />
                   {onChangeSubEta && <EtaChip value={s.eta} onChange={(v) => onChangeSubEta(task.id, s.id, v)} />}
                   <TrashLink onClick={() => onDeleteSub(task.id, s.id)} size={12} />
                 </div>
@@ -2171,7 +2266,7 @@ function weekGroupColors() {
 function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReorderTasks, onResetOrder,
   onRequestReset, onRequestClearDone, onToggleWeeklyTask, onToggleDailyTask,
   onAddTask, onAddSubtask, onToggleSubtask, onDeleteSubtask, taskVoice, subVoice,
-  onChangeCategorie, onChangeEta, onChangeSubEta }) {
+  onChangeCategorie, onChangeEta, onChangeSubEta, onChangeTitle, onChangeSubTitle }) {
   const totalDone = state.tasks.filter((t) => t.done).length;
   const totalCount = state.tasks.length;
   const isEmpty = state.tasks.length === 0;
@@ -2234,6 +2329,8 @@ function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReo
             onChangeCategorie={onChangeCategorie}
             onChangeEta={onChangeEta}
             onChangeSubEta={onChangeSubEta}
+            onChangeTitle={onChangeTitle}
+            onChangeSubTitle={onChangeSubTitle}
             expandSignal={expandSignal}
           />
         )}
@@ -2248,7 +2345,7 @@ function TasksView({ state, weekly, daily, onToggleSimple, onDeleteSimple, onReo
 // Comme MissionCard, mais un seul style (pas de thème à décliner) : checkbox,
 // titre, catégorie/échéance en dessous, et les sous-missions au dépli — même
 // mécanique que sur la page Missions (`useTaskItem` + `MissionSubs`).
-function CategoryTaskRow({ task, onToggle, onDelete, onChangeCategorie, onChangeEta, onAddSub, onToggleSub, onDeleteSub, onChangeSubEta, expandSignal }) {
+function CategoryTaskRow({ task, onToggle, onDelete, onChangeCategorie, onChangeEta, onAddSub, onToggleSub, onDeleteSub, onChangeSubEta, onChangeTitle, onChangeSubTitle, expandSignal }) {
   const { open, setOpen, doneSubs, totalSubs } = useTaskItem(task, expandSignal);
   const count = totalSubs > 0 ? `${doneSubs}/${totalSubs}` : null;
   return (
@@ -2257,22 +2354,21 @@ function CategoryTaskRow({ task, onToggle, onDelete, onChangeCategorie, onChange
         <span onClick={onToggle} className="cl-tap" style={{ cursor: "pointer", display: "flex" }}>
           <Checkbox done={task.done} size={20} />
         </span>
-        <span onClick={onToggle} style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 500, lineHeight: 1.3, cursor: "pointer", ...strike(task.done) }}>
-          {task.title}
-        </span>
+        <EditableTitle value={task.title} done={task.done} onToggle={onToggle} onRename={onChangeTitle}
+          style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 500, lineHeight: 1.3 }} />
         <ExpandBtn open={open} onClick={() => setOpen(!open)} count={count} />
         <TrashLink onClick={onDelete} size={13} />
       </div>
       <TaskMeta task={task} onChangeCategorie={onChangeCategorie} onChangeEta={onChangeEta} />
       {open && (
         <MissionSubs task={task} onToggleSub={onToggleSub} onDeleteSub={onDeleteSub}
-          onAddSub={onAddSub} onDelete={onDelete} onChangeSubEta={onChangeSubEta} />
+          onAddSub={onAddSub} onDelete={onDelete} onChangeSubEta={onChangeSubEta} onChangeSubTitle={onChangeSubTitle} />
       )}
     </div>
   );
 }
 
-function CategoryView({ name, tasks, onToggle, onDelete, onAddTask, onChangeCategorie, onChangeEta, onAddSubtask, onToggleSubtask, onDeleteSubtask, onChangeSubEta }) {
+function CategoryView({ name, tasks, onToggle, onDelete, onAddTask, onChangeCategorie, onChangeEta, onAddSubtask, onToggleSubtask, onDeleteSubtask, onChangeSubEta, onChangeTitle, onChangeSubTitle }) {
   const meta = CATEGORY_META[name];
   const color = PALETTE[meta.colorKey] || PALETTE.forest;
   const items = tasks.filter((t) => t.categorie === name);
@@ -2297,6 +2393,8 @@ function CategoryView({ name, tasks, onToggle, onDelete, onAddTask, onChangeCate
               onToggle={() => onToggle(t.id)} onDelete={() => onDelete(t.id)}
               onChangeCategorie={(v) => onChangeCategorie(t.id, v)}
               onChangeEta={(v) => onChangeEta(t.id, v)}
+              onChangeTitle={onChangeTitle ? (v) => onChangeTitle(t.id, v) : undefined}
+              onChangeSubTitle={onChangeSubTitle}
               onAddSub={onAddSubtask} onToggleSub={onToggleSubtask} onDeleteSub={onDeleteSubtask}
               onChangeSubEta={onChangeSubEta} expandSignal={expandSignal} />
           ))}
@@ -2501,7 +2599,7 @@ function SportView({ sport, onOpenDossier }) {
   );
 }
 
-function DossierDetailView({ dossier, onBack, onToggleTask, onDeleteTask, onAddTask, onAddSubtask, onToggleSubtask, onDeleteSubtask, onReorderTasks }) {
+function DossierDetailView({ dossier, onBack, onToggleTask, onDeleteTask, onAddTask, onAddSubtask, onToggleSubtask, onDeleteSubtask, onReorderTasks, onChangeTitle, onChangeSubTitle }) {
   const done = dossier.tasks.filter((t) => t.done).length + dossier.tasks.reduce((a, t) => a + (t.subtasks?.filter((s) => s.done).length || 0), 0);
   const total = dossier.tasks.length + dossier.tasks.reduce((a, t) => a + (t.subtasks?.length || 0), 0);
   const pct = total ? Math.round((done / total) * 100) : 0;
@@ -2527,6 +2625,8 @@ function DossierDetailView({ dossier, onBack, onToggleTask, onDeleteTask, onAddT
           onAddSub={onAddSubtask}
           onToggleSub={onToggleSubtask}
           onDeleteSub={onDeleteSubtask}
+          onChangeTitle={onChangeTitle}
+          onChangeSubTitle={onChangeSubTitle}
         />
       )}
       {dossier.tasks.length === 0 && <EmptyState title="Dossier vide" subtitle="Ajoute une mission avec le champ ci-dessus" />}
@@ -2998,6 +3098,8 @@ export default function Clairiere() {
   const addSubtask = (taskId, title) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: [...(t.subtasks || []), { id: uid(), title: title || "Sous-mission", done: false }] } : t)) } : d)));
   const toggleSubtask = (taskId, subtaskId) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: (t.subtasks || []).map((s) => (s.id === subtaskId ? { ...s, done: !s.done } : s)) } : t)) } : d)));
   const deleteSubtask = (taskId, subtaskId) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: (t.subtasks || []).filter((s) => s.id !== subtaskId) } : t)) } : d)));
+  const changeDossierTaskTitle = (taskId, title) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, title } : t)) } : d)));
+  const changeDossierSubtaskTitle = (taskId, subtaskId, title) => withActiveCollection((dossiers) => dossiers.map((d) => (d.id === activeDossierId ? { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: (t.subtasks || []).map((s) => (s.id === subtaskId ? { ...s, title } : s)) } : t)) } : d)));
 
   const deleteObjectif = (domainId, univerName, objectifId) =>
     setDomaines((prev) => ({
@@ -3061,6 +3163,10 @@ export default function Clairiere() {
     patchMission(taskId, (t) => ({ ...t, eta }));
   const changeMissionSubEta = (taskId, subId, eta) =>
     patchMission(taskId, (t) => ({ ...t, subtasks: (t.subtasks || []).map((s) => (s.id === subId ? { ...s, eta } : s)) }));
+  const changeMissionTitle = (taskId, title) =>
+    patchMission(taskId, (t) => ({ ...t, title }));
+  const changeMissionSubTitle = (taskId, subId, title) =>
+    patchMission(taskId, (t) => ({ ...t, subtasks: (t.subtasks || []).map((s) => (s.id === subId ? { ...s, title } : s)) }));
 
   // `voiceArmed` s'allume dès l'appui, avant même que le micro soit ouvert :
   // getUserMedia peut prendre un instant, voire attendre une autorisation, et
@@ -3502,7 +3608,8 @@ export default function Clairiere() {
             onAddTask={addMissionTask} onAddSubtask={addMissionSubtask}
             onToggleSubtask={toggleMissionSubtask} onDeleteSubtask={deleteMissionSubtask}
             taskVoice={taskVoice} subVoice={subVoice}
-            onChangeCategorie={changeMissionCategorie} onChangeEta={changeMissionEta} onChangeSubEta={changeMissionSubEta} />
+            onChangeCategorie={changeMissionCategorie} onChangeEta={changeMissionEta} onChangeSubEta={changeMissionSubEta}
+            onChangeTitle={changeMissionTitle} onChangeSubTitle={changeMissionSubTitle} />
         )}
         {view === "dossiers" && (
           <DossiersView dossiers={state.dossiers} onReorderDossiers={reorderDossiers} onOpenDossier={openDossier}
@@ -3512,7 +3619,8 @@ export default function Clairiere() {
           <DossierDetailView dossier={state.dossiers.find((d) => d.id === activeDossierId)} onBack={backToMain}
             onToggleTask={toggleDossierTask} onDeleteTask={deleteDossierTask} onAddTask={addTaskToDossier}
             onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onDeleteSubtask={deleteSubtask}
-            onReorderTasks={reorderDossierTasks} />
+            onReorderTasks={reorderDossierTasks}
+            onChangeTitle={changeDossierTaskTitle} onChangeSubTitle={changeDossierSubtaskTitle} />
         )}
         {view === "dashboard" && <DashboardView state={state} weekly={weekly} daily={daily} monthly={monthly} emailItems={emailItems} />}
         {view === "daily" && <DailyView daily={daily} onToggleTask={toggleDailyTask} />}
@@ -3527,7 +3635,8 @@ export default function Clairiere() {
             onToggle={toggleSimpleTask} onDelete={deleteSimpleTask} onAddTask={addMissionTask}
             onChangeCategorie={changeMissionCategorie} onChangeEta={changeMissionEta}
             onAddSubtask={addMissionSubtask} onToggleSubtask={toggleMissionSubtask}
-            onDeleteSubtask={deleteMissionSubtask} onChangeSubEta={changeMissionSubEta} />
+            onDeleteSubtask={deleteMissionSubtask} onChangeSubEta={changeMissionSubEta}
+            onChangeTitle={changeMissionTitle} onChangeSubTitle={changeMissionSubTitle} />
         )}
       </div>
 
