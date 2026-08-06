@@ -12,6 +12,19 @@ const DIST_DIR = path.join(ROOT, "dist");
 const PORT = process.env.PORT || 4000;
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma3:4b";
+// Modele du chat. Il ne voit que les phrases que l'analyseur deterministe
+// (`src/intent.js`) n'a pas su classer, et ne produit qu'un couple
+// {intent, target} - jamais de prose. Mesure sur ce Pi 5, sur des
+// formulations indirectes, sortie contrainte par schema :
+//   qwen2.5:1.5b-instruct  7/8 corrects   2,8 s
+//   gemma3:4b              8/8 corrects   9,8 s
+//   gemma3:1b              6/8 corrects   5,9 s
+//   llama3.2:1b            4/8 corrects   4,2 s
+// qwen2.5:1.5b est le seul a tenir sous les 3 s sans s'effondrer en
+// justesse. Les 16 Go du Pi lui permettent de rester resident en meme
+// temps que gemma3:4b (dictee) - verifie a 8,5 Go pour trois modeles
+// charges - donc aucun rechargement en passant du chat a la dictee.
+const OLLAMA_CHAT_MODEL = process.env.OLLAMA_CHAT_MODEL || "qwen2.5:1.5b-instruct";
 // Modèle dédié à la mise en forme d'une dictée en tâche + sous-tâches.
 // Séparé du chat : il doit sortir du JSON strict, pas de la conversation.
 // Par défaut le même modèle que le chat : un seul 4B reste chargé en RAM,
@@ -140,61 +153,79 @@ function extractJson(text) {
   return match ? match[0] : cleaned;
 }
 
+// L'ancien /api/chat demandait a gemma3:4b de rediger une phrase de
+// confirmation ET un tableau d'actions, sans schema de sortie. Trois couts
+// se cumulaient : un modele de 4 milliards de parametres a ~7 jetons/s, une
+// sortie longue (la phrase, le markdown ```json, les accolades), et tout
+// l'historique de conversation renvoye a chaque tour. Resultat mesure :
+// 9,35 s pour "Ajoute faire les courses".
+//
+// Ici le modele ne redige plus rien : il classe. La phrase de confirmation
+// est ecrite par le front, qui sait deja ce qu'il vient de faire. Et il ne
+// voit que les phrases refusees par l'analyseur deterministe - soit une
+// minorite des cas.
+const INTENT_SCHEMA = {
+  type: "object",
+  properties: {
+    intent: { type: "string", enum: ["add", "done", "undone", "delete", "add_folder", "none"] },
+    target: { type: "string" },
+  },
+  required: ["intent", "target"],
+};
+
+const INTENT_SYSTEM = `Tu classes une phrase en une action sur une liste de taches.
+intent = "add" si la personne veut retenir quelque chose a faire.
+intent = "done" si elle dit avoir termine quelque chose.
+intent = "undone" si elle dit que quelque chose n est finalement pas fait.
+intent = "delete" si elle veut retirer quelque chose de la liste.
+intent = "add_folder" si elle veut creer un dossier ou un projet.
+intent = "none" si la phrase ne demande aucune action (salutation, question, bavardage).
+target = ce qu il faut faire, en francais, sans verbe d ordre. Vide si intent=none.
+Reponds uniquement par le JSON demande.`;
+
 app.post("/api/chat", async (req, res) => {
-  const { messages = [], userInput = "" } = req.body || {};
-  const systemPrompt = `Tu es Clairière, un assistant de gestion de tâches personnelles. L'utilisateur te donne des instructions en langage naturel.
-
-Actions disponibles (utilise-les à chaque fois qu'une action concrète est demandée, ne réponds JAMAIS avec un tableau actions vide si l'utilisateur demande d'ajouter/modifier/supprimer quelque chose) :
-- add_task : { "type": "add_task", "title": "titre de la tâche" }
-- add_dossier : { "type": "add_dossier", "name": "nom du dossier" }
-- toggle_task : { "type": "toggle_task", "id": "id de la tâche" }
-- delete_task : { "type": "delete_task", "id": "id de la tâche" }
-
-Réponds UNIQUEMENT avec du JSON valide, sans aucun texte ni markdown autour.
-
-Exemple pour "Ajoute faire les courses" :
-{"reply":"Tâche ajoutée","status":"ok","actions":[{"type":"add_task","title":"faire les courses"}]}
-
-Exemple pour "Crée un dossier Vacances" :
-{"reply":"Dossier créé","status":"ok","actions":[{"type":"add_dossier","name":"Vacances"}]}
-
-Format de sortie exact : {"reply":"...(très court, 3-8 mots)","status":"ok|question|error","actions":[...]}`;
+  const text = String(req.body?.text || req.body?.userInput || "").trim();
+  if (!text) return res.status(400).json({ error: "empty_text" });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
+  // 12 s : quatre fois la latence mesuree, de quoi absorber un pic de charge
+  // sans laisser l'interface bloquee si Ollama ne repond plus du tout.
+  const timeout = setTimeout(() => controller.abort(), 12000);
 
   try {
     const ollamaRes = await fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: OLLAMA_MODEL,
+        model: OLLAMA_CHAT_MODEL,
+        // Aucun historique : classer une phrase ne demande pas de memoire,
+        // et chaque tour rajoute du prompt a evaluer.
         messages: [
-          { role: "system", content: systemPrompt },
-          ...messages.map((m) => ({ role: m.role, content: m.content })),
-          { role: "user", content: userInput },
+          { role: "system", content: INTENT_SYSTEM },
+          { role: "user", content: text },
         ],
+        format: INTENT_SCHEMA,
+        think: false,
         stream: false,
+        keep_alive: "30m",
+        options: { temperature: 0, num_predict: 60 },
       }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
-
     if (!ollamaRes.ok) throw new Error(`Ollama HTTP ${ollamaRes.status}`);
-    const data = await ollamaRes.json();
-    const rawText = data.message?.content || "";
-    const jsonStr = extractJson(rawText);
-    const parsed = JSON.parse(jsonStr);
 
-    res.json({
-      reply: parsed.reply || "Action effectuée.",
-      status: parsed.status || "ok",
-      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-    });
+    const data = await ollamaRes.json();
+    const parsed = JSON.parse(extractJson(data.message?.content || "{}"));
+    const intent = INTENT_SCHEMA.properties.intent.enum.includes(parsed.intent) ? parsed.intent : "none";
+
+    res.json({ intent, target: String(parsed.target || "").trim(), degraded: false });
   } catch (e) {
     clearTimeout(timeout);
-    console.error("ollama chat failed:", e.message);
-    res.json({ reply: "Le modèle local n'a pas répondu à temps.", status: "error", actions: [] });
+    console.error("chat intent failed:", e.message);
+    // Le modele n'a pas repondu : on le dit franchement plutot que
+    // d'inventer une action sur les taches de l'utilisateur.
+    res.json({ intent: "none", target: "", degraded: true });
   }
 });
 
@@ -387,6 +418,22 @@ app.get("*", (req, res) => {
 
 // Précharge le modèle de mise en forme : sans ça, la première dictée de la
 // journée attend ~55 s le seul chargement du modèle depuis le disque.
+function warmModel(model) {
+  fetch(`${OLLAMA_URL}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: "ok" }],
+      stream: false, think: false, keep_alive: "30m",
+      options: { num_predict: 1 },
+    }),
+  }).then(
+    () => console.log(`modele ${model} precharge`),
+    (e) => console.warn(`prechargement ${model} echoue:`, e.message),
+  );
+}
+
 function warmStructureModel() {
   fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
@@ -404,6 +451,7 @@ function warmStructureModel() {
 }
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Clairière server running on http://0.0.0.0:${PORT} (modèle chat: ${OLLAMA_MODEL})`);
+  console.log(`Clairière server running on http://0.0.0.0:${PORT} (chat: ${OLLAMA_CHAT_MODEL}, dictée: ${OLLAMA_STRUCTURE_MODEL})`);
   warmStructureModel();
+  warmModel(OLLAMA_CHAT_MODEL);
 });

@@ -24,11 +24,20 @@ export function micUnavailableReason() {
 }
 
 export const MIC_HELP = {
-  insecure: "Micro bloqué en http. Ouvre l'app en https:// pour dicter.",
+  insecure: "Micro bloqué en http — touche « Passer en HTTPS » en haut de l'écran.",
   unsupported: "Ce navigateur ne permet pas d'enregistrer.",
   denied: "Micro refusé. Autorise-le dans les réglages du site.",
   failed: "L'enregistrement a échoué.",
 };
+
+// Même hôte, même page, mais en https — la seule chose qui débloque vraiment
+// le micro. Depuis l'accès direct au port 4000 (Express, en clair), le chemin
+// est `/` : on vise explicitement /clairiere/, servi par nginx qui porte le TLS.
+export function httpsTarget() {
+  const { hostname, pathname, search, hash } = window.location;
+  const path = pathname.startsWith("/clairiere") ? pathname : "/clairiere/";
+  return `https://${hostname}${path}${search}${hash}`;
+}
 
 function pickMimeType() {
   const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];

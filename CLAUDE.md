@@ -7,8 +7,19 @@ Tous les appareils sont sur le même réseau Tailscale (meshnet NordVPN).
 ## Ce que c'est
 
 App web de gestion personnelle des tâches (voir `README.md` pour le détail
-fonctionnel complet : tâches, dossiers, hebdo, daily, sport, email, domaines
+fonctionnel complet : missions, dossiers, hebdo, daily, sport, email, domaines
 de vie, chat assistant).
+
+## Vocabulaire et modèle de données
+
+- **Le mot affiché à l'utilisateur est toujours « mission »**, jamais « tâche ».
+  En conception on peut dire l'un ou l'autre, mais l'interface dit mission et
+  sous-mission. Les identifiants du code restent `tasks` / `subtasks` : les
+  renommer casserait les clés déjà enregistrées dans `store.json`.
+- **Exactement deux niveaux** : une mission, ses sous-missions. Jamais un
+  troisième. La règle est appliquée à la lecture du store par `flattenSubs()`
+  (`src/Clairiere.jsx`), pas seulement dans l'interface : toute donnée
+  imbriquée plus profond est remontée d'un cran sans rien perdre.
 
 ## Où ça vit
 
@@ -28,6 +39,14 @@ de vie, chat assistant).
   `/api/chat`, `/api/transcribe`, `/api/structure` (tout en local, PAS l'API
   Anthropic)
 - **Persistance** : `data/store.json` sur le Pi (non versionné, voir `.gitignore`)
+  9 clés : `clairiere:v4` (missions + dossiers), `weekly`, `daily`, `monthly`,
+  `sport`, `emails`, `chat`, `theme`, `domaines`.
+  **Règle de sécurité côté client** : si une seule lecture échoue au
+  chargement, l'app n'écrit plus rien et affiche « Données non chargées ».
+  Sans ce garde-fou, un serveur qui redémarre pendant le chargement faisait
+  enregistrer les données de démonstration par-dessus le vrai contenu — sept
+  clés perdues d'un coup. `storageGet` distingue donc « clé absente » (404) de
+  « serveur muet » (réseau/500) ; ne jamais refondre ça en un simple `null`.
 - **Transcription** : whisper.cpp en service systemd (`whisper.service`),
   `/opt/whisper`, modèle `ggml-small.bin`, écoute sur `127.0.0.1:8081`
 - **Process manager** : systemd, services `clairiere.service` et `whisper.service`
@@ -36,9 +55,17 @@ de vie, chat assistant).
 
 ## Accès web (depuis n'importe quel appareil, via le meshnet)
 
-- **URL principale (à privilégier)** : `https://100.96.55.59/clairiere`
-- **HTTP, toujours actif** : `http://100.96.55.59/clairiere`
-- **Accès direct (fallback)** : `http://100.96.55.59:4000`
+- **URL principale** : `https://100.96.55.59/clairiere`
+- **HTTP → bascule automatique en HTTPS** : `http://100.96.55.59/clairiere`
+  renvoie un **302 vers l'équivalent https** (règle `if ($scheme = http)` dans
+  le bloc `location /clairiere/` du snippet nginx). Seule Clairière est
+  concernée : tuna, guideconf, observatoire, youtuber et la page d'accueil
+  restent accessibles en http. 302 et non 301 pour que rien ne soit mis en
+  cache définitivement par le navigateur — retirer la ligne suffit à annuler.
+- **Accès direct (fallback)** : `http://100.96.55.59:4000` — nginx n'est pas
+  dans le circuit, donc **pas de TLS et pas de micro** ici. L'app détecte le
+  contexte non sécurisé et affiche un bandeau « Passer en HTTPS » qui renvoie
+  vers `https://<hôte>/clairiere/`.
 - **Page d'accueil listant les apps du Pi** : `http://100.96.55.59/`
 
 ### Pourquoi le HTTPS est nécessaire
