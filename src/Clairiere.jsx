@@ -9,7 +9,7 @@ import {
   AlertTriangle, Check, Sparkles, Trees, Folder, CalendarRange, Wallet,
   Shirt, Bike, Mountain, ChefHat, Footprints, BedDouble, Sun, Sprout,
   LayoutGrid, Flame, Home, Briefcase, Landmark, Stamp, PiggyBank,
-  ChevronsDown, ChevronsUp,
+  ChevronsDown, ChevronsUp, MessageCircle, ShoppingCart,
 } from "lucide-react";
 
 // ============================================================
@@ -631,6 +631,7 @@ const STORAGE_KEYS = {
   state: "clairiere:v4", chat: "clairiere:chat", weekly: "clairiere:weekly",
   daily: "clairiere:daily", sport: "clairiere:sport", emails: "clairiere:emails",
   theme: "clairiere:theme", monthly: "clairiere:monthly", domaines: "clairiere:domaines",
+  courses: "clairiere:courses",
 };
 
 // Rend { ok, value }. `ok:false` = le serveur n'a pas répondu (réseau coupé,
@@ -2404,6 +2405,67 @@ function CategoryView({ name, tasks, onToggle, onDelete, onAddTask, onChangeCate
   );
 }
 
+// ---------- Liste de courses ----------
+// Volontairement à part de tout le reste : pas de sous-niveaux, pas de
+// catégorie, pas d'échéance. Un article est acheté ou non, et on vide les
+// achetés d'un coup quand on rentre des courses.
+function CoursesItemRow({ item, onToggle, onDelete }) {
+  return (
+    <div className="cl-card" style={cardStyle({ padding: "8px 8px 8px 11px" })}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span onClick={onToggle} className="cl-tap" style={{ cursor: "pointer", display: "flex" }}>
+          <Checkbox done={item.done} size={20} />
+        </span>
+        <span
+          onClick={onToggle}
+          style={{ flex: 1, minWidth: 0, cursor: "pointer", fontSize: 14, fontWeight: 500, lineHeight: 1.3, ...strike(item.done) }}
+        >
+          {item.title}
+        </span>
+        <TrashLink onClick={onDelete} size={13} />
+      </div>
+    </div>
+  );
+}
+
+function CoursesView({ items, onAdd, onToggle, onDelete, onClearDone }) {
+  const [confirming, setConfirming] = useState(false);
+  const bought = items.filter((it) => it.done).length;
+  const left = items.length - bought;
+  return (
+    <div>
+      <PageTitle icon={ShoppingCart} color={PALETTE.clay} title="Courses"
+        subtitle={items.length === 0 ? "Liste vide" : `${left} à acheter · ${bought} dans le panier`} />
+      <div style={{ marginBottom: 10 }}>
+        <Composer placeholder="Nouvel article…" onSubmit={onAdd} />
+      </div>
+      {bought > 0 && !confirming && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <PillButton variant="dangerGhost" icon={Trash2} onClick={() => setConfirming(true)}>
+            Vider les {bought} achetés
+          </PillButton>
+        </div>
+      )}
+      {confirming && (
+        <ConfirmBar
+          label={`Retirer les ${bought} articles achetés de la liste ?`}
+          confirmLabel="Vider"
+          onConfirm={() => { onClearDone(); setConfirming(false); }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
+      {items.length === 0 && <EmptyState icon={ShoppingCart} title="Rien à acheter" subtitle="Ajoute un article avec le champ ci-dessus" />}
+      {items.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {items.map((it) => (
+            <CoursesItemRow key={it.id} item={it} onToggle={() => onToggle(it.id)} onDelete={() => onDelete(it.id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DossierCard({ dossier, index, onOpen, onDelete, onDragStart }) {
   const pct = dossierPct(dossier);
   const color = colorForIndex(index);
@@ -2761,7 +2823,7 @@ function DomainView({ domainId, univers, onDeleteObjectif }) {
 // s'étire en pilule avec son libellé, le reste est icône seule.
 // ============================================================
 // ---------- Catégories de missions ----------
-// Cinq catégories fixes, indépendantes des dossiers/domaines : une mission
+// Six catégories fixes, indépendantes des dossiers/domaines : une mission
 // n'appartient qu'à une catégorie à la fois (ou aucune, `categorie: null`).
 const CATEGORY_META = {
   Matera: { icon: Home, colorKey: "forest" },
@@ -2769,6 +2831,7 @@ const CATEGORY_META = {
   AdminFR: { icon: Landmark, colorKey: "berry" },
   AdminDE: { icon: Stamp, colorKey: "clay" },
   Placement: { icon: PiggyBank, colorKey: "sage" },
+  WhatsApp: { icon: MessageCircle, colorKey: "amber" },
 };
 const CATEGORIES = Object.keys(CATEGORY_META);
 
@@ -2938,6 +3001,7 @@ export default function Clairiere() {
   const [monthly, setMonthly] = useState(defaultMonthly());
   const [sport, setSport] = useState(defaultSport());
   const [domaines, setDomaines] = useState(defaultDomaines);
+  const [courses, setCourses] = useState([]);
   const [emailItems, setEmailItems] = useState([]);
   const [emailScanning, setEmailScanning] = useState(false);
   const [emailLastScan, setEmailLastScan] = useState(null);
@@ -2979,12 +3043,13 @@ export default function Clairiere() {
   // vrai contenu : sept clés perdues d'un coup.
   useEffect(() => {
     (async () => {
-      const [s, w, d, sp, ec, c, th, mo, dm] = await Promise.all([
+      const [s, w, d, sp, ec, c, th, mo, dm, co] = await Promise.all([
         storageGet(STORAGE_KEYS.state), storageGet(STORAGE_KEYS.weekly), storageGet(STORAGE_KEYS.daily),
         storageGet(STORAGE_KEYS.sport), storageGet(STORAGE_KEYS.emails), storageGet(STORAGE_KEYS.chat),
         storageGet(STORAGE_KEYS.theme), storageGet(STORAGE_KEYS.monthly), storageGet(STORAGE_KEYS.domaines),
+        storageGet(STORAGE_KEYS.courses),
       ]);
-      const reads = [s, w, d, sp, ec, c, th, mo, dm];
+      const reads = [s, w, d, sp, ec, c, th, mo, dm, co];
       if (reads.some((r) => !r.ok)) {
         setLoadFailed(true);
         return;
@@ -3008,6 +3073,7 @@ export default function Clairiere() {
       if (ec.value) { setEmailItems(ec.value.items || []); setEmailLastScan(ec.value.lastScan || null); }
       if (c.value) setMessages(c.value);
       setDomaines(mergeDomaines(dm.value));
+      if (Array.isArray(co.value)) setCourses(co.value);
       setLoaded(true);
     })();
   }, []);
@@ -3021,6 +3087,7 @@ export default function Clairiere() {
   useEffect(() => { if (loaded) storageSet(STORAGE_KEYS.chat, messages); }, [messages, loaded]);
   useEffect(() => { if (loaded) storageSet(STORAGE_KEYS.domaines, domaines).then(setSaveOk); }, [domaines, loaded]);
   useEffect(() => { if (loaded) storageSet(STORAGE_KEYS.emails, { items: emailItems, lastScan: emailLastScan }); }, [emailItems, emailLastScan, loaded]);
+  useEffect(() => { if (loaded) storageSet(STORAGE_KEYS.courses, courses).then(setSaveOk); }, [courses, loaded]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, sending, chatOpen]);
 
   const toggleRecording = () => {
@@ -3108,6 +3175,12 @@ export default function Clairiere() {
         u.name === univerName ? { ...u, items: u.items.filter((o) => o.id !== objectifId) } : u
       ),
     }));
+
+  // ---- liste de courses (indépendante des missions) ----
+  const addCourse = (title) => setCourses((prev) => [...prev, { id: uid(), title: title.trim(), done: false }]);
+  const toggleCourse = (id) => setCourses((prev) => prev.map((it) => (it.id === id ? { ...it, done: !it.done } : it)));
+  const deleteCourse = (id) => setCourses((prev) => prev.filter((it) => it.id !== id));
+  const clearBoughtCourses = () => setCourses((prev) => prev.filter((it) => !it.done));
 
   const backToMain = () => setView(dossierReturnView || "dossiers");
   const dismissEmail = (id) => setEmailItems((prev) => prev.map((g) => ({ ...g, items: g.items.filter((it) => it.id !== id) })).filter((g) => g.items.length > 0));
@@ -3390,6 +3463,7 @@ export default function Clairiere() {
       <div style={{ display: "flex", alignItems: "center", gap: 4, position: "relative", flexWrap: "wrap" }}>
         <NavIconBtn id="dashboard" label="Clairière" icon={Trees} big />
         <NavIconBtn id="tasks" label="Missions" icon={ListChecks} big />
+        <NavIconBtn id="courses" label="Courses" icon={ShoppingCart} big />
         <span style={{ width: 1, height: 22, background: PALETTE.lineSoft, margin: "0 5px", flexShrink: 0 }} />
         <div className="cl-hscroll" style={{ display: "flex", alignItems: "center", gap: 2, overflowX: "auto", flex: 1, minWidth: 120 }}>
           {NAV_ITEMS.map((it) =>
@@ -3621,6 +3695,10 @@ export default function Clairiere() {
             onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onDeleteSubtask={deleteSubtask}
             onReorderTasks={reorderDossierTasks}
             onChangeTitle={changeDossierTaskTitle} onChangeSubTitle={changeDossierSubtaskTitle} />
+        )}
+        {view === "courses" && (
+          <CoursesView items={courses} onAdd={addCourse} onToggle={toggleCourse}
+            onDelete={deleteCourse} onClearDone={clearBoughtCourses} />
         )}
         {view === "dashboard" && <DashboardView state={state} weekly={weekly} daily={daily} monthly={monthly} emailItems={emailItems} />}
         {view === "daily" && <DailyView daily={daily} onToggleTask={toggleDailyTask} />}
